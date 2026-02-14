@@ -1,6 +1,10 @@
-"""Party routes — Create/Join groups for shared game session history.
+"""parties.py — Party management for shared game session history.
 
-Players can create parties, invite others, and share rulings within the party.
+Players create parties (groups), invite friends, and share rulings
+within the party. Parties enable the PARTY privacy level on saved rulings.
+
+Called by: Frontend parties page (/dashboard/parties)
+Depends on: deps.py (CurrentUser, DbSession), tables.py (Party, PartyMember)
 """
 
 from __future__ import annotations
@@ -21,10 +25,14 @@ router = APIRouter(prefix="/api/v1/parties", tags=["parties"])
 
 
 class CreatePartyRequest(BaseModel):
+    """Request body for creating a new party."""
+
     name: str
 
 
 class PartyResponse(BaseModel):
+    """Response shape for a party."""
+
     id: str
     name: str
     owner_id: str
@@ -33,25 +41,39 @@ class PartyResponse(BaseModel):
 
 
 class PartyMemberResponse(BaseModel):
+    """Response shape for a party member."""
+
     user_id: str
-    role: str
+    role: str  # "OWNER" | "MEMBER"
     joined_at: str | None
 
 
-# ─── Routes ────────────────────────────────────────────────────────────────────
+# ─── Create Party ─────────────────────────────────────────────────────────────
 
 
 @router.post("", response_model=PartyResponse, status_code=201)
 async def create_party(body: CreatePartyRequest, user: CurrentUser, db: DbSession) -> PartyResponse:
-    """Create a new party. The creator becomes the OWNER."""
+    """Create a new party. The creator becomes the OWNER.
+
+    Auth: JWT required.
+    Rate limit: None.
+    Tier: All tiers (FREE, PRO, ADMIN).
+
+    Args:
+        body: Party creation data with a name.
+
+    Returns:
+        The created party with member_count=1 (the owner).
+    """
     party = Party(
         name=body.name,
         owner_id=user["id"],
     )
     db.add(party)
+    # Flush to get the party ID before creating the membership
     await db.flush()
 
-    # Add creator as owner
+    # The creator is automatically added as OWNER
     member = PartyMember(
         party_id=party.id,
         user_id=user["id"],
@@ -70,14 +92,27 @@ async def create_party(body: CreatePartyRequest, user: CurrentUser, db: DbSessio
     )
 
 
+# ─── List My Parties ──────────────────────────────────────────────────────────
+
+
 @router.get("", response_model=list[PartyResponse])
 async def list_my_parties(user: CurrentUser, db: DbSession) -> list[PartyResponse]:
-    """List parties the current user belongs to."""
+    """List parties the current user belongs to.
+
+    Auth: JWT required.
+    Rate limit: None.
+    Tier: All tiers.
+
+    Returns:
+        List of parties the user is a member of, with member counts.
+    """
     result = await db.execute(
         select(PartyMember).where(PartyMember.user_id == user["id"])
     )
     memberships = result.scalars().all()
 
+    # TODO(kasey, 2026-02-14): Replace N+1 queries with a single JOIN query
+    # for better performance at scale. Fine for MVP with small party counts.
     parties = []
     for m in memberships:
         party_result = await db.execute(
@@ -102,14 +137,31 @@ async def list_my_parties(user: CurrentUser, db: DbSession) -> list[PartyRespons
     return parties
 
 
+# ─── List Party Members ───────────────────────────────────────────────────────
+
+
 @router.get("/{party_id}/members", response_model=list[PartyMemberResponse])
 async def list_party_members(
     party_id: uuid.UUID,
     user: CurrentUser,
     db: DbSession,
 ) -> list[PartyMemberResponse]:
-    """List members of a party (must be a member to view)."""
-    # Check membership
+    """List members of a party (must be a member to view).
+
+    Auth: JWT required (members only — prevents data leakage).
+    Rate limit: None.
+    Tier: All tiers.
+
+    Args:
+        party_id: UUID of the party whose members to list.
+
+    Returns:
+        List of party members with roles and join dates.
+
+    Raises:
+        HTTPException: 403 if caller is not a member of the party.
+    """
+    # Membership gate: only party members can see the member list
     result = await db.execute(
         select(PartyMember).where(
             PartyMember.party_id == party_id,
@@ -134,20 +186,37 @@ async def list_party_members(
     ]
 
 
+# ─── Join Party ────────────────────────────────────────────────────────────────
+
+
 @router.post("/{party_id}/join", status_code=201)
 async def join_party(
     party_id: uuid.UUID,
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
-    """Join a party."""
-    # Check party exists
+    """Join a party as a MEMBER.
+
+    Auth: JWT required.
+    Rate limit: None.
+    Tier: All tiers.
+
+    Args:
+        party_id: UUID of the party to join.
+
+    Returns:
+        Confirmation dict with party_id and status.
+
+    Raises:
+        HTTPException: 404 if party not found, 409 if already a member.
+    """
+    # --- Validate party exists ---
     party_result = await db.execute(select(Party).where(Party.id == party_id))
     party = party_result.scalar_one_or_none()
     if not party:
         raise HTTPException(status_code=404, detail="Party not found")
 
-    # Check already a member
+    # --- Prevent duplicate membership ---
     existing = await db.execute(
         select(PartyMember).where(
             PartyMember.party_id == party_id,
@@ -168,13 +237,30 @@ async def join_party(
     return {"party_id": str(party_id), "status": "joined"}
 
 
+# ─── Leave Party ───────────────────────────────────────────────────────────────
+
+
 @router.post("/{party_id}/leave", status_code=200)
 async def leave_party(
     party_id: uuid.UUID,
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
-    """Leave a party. Owners cannot leave (must transfer ownership first)."""
+    """Leave a party. Owners cannot leave (must transfer ownership first).
+
+    Auth: JWT required (members only).
+    Rate limit: None.
+    Tier: All tiers.
+
+    Args:
+        party_id: UUID of the party to leave.
+
+    Returns:
+        Confirmation dict with party_id and status.
+
+    Raises:
+        HTTPException: 400 if user is the owner, 404 if not a member.
+    """
     result = await db.execute(
         select(PartyMember).where(
             PartyMember.party_id == party_id,
@@ -185,6 +271,7 @@ async def leave_party(
     if not membership:
         raise HTTPException(status_code=404, detail="Not a member")
 
+    # Owners must transfer ownership before leaving to prevent orphaned parties
     if membership.role == "OWNER":
         raise HTTPException(status_code=400, detail="Owners cannot leave. Transfer ownership first.")
 
@@ -194,13 +281,27 @@ async def leave_party(
     return {"party_id": str(party_id), "status": "left"}
 
 
+# ─── Delete Party ──────────────────────────────────────────────────────────────
+
+
 @router.delete("/{party_id}", status_code=204)
 async def delete_party(
     party_id: uuid.UUID,
     user: CurrentUser,
     db: DbSession,
 ) -> None:
-    """Delete a party (owner only)."""
+    """Delete a party and all its memberships (owner only).
+
+    Auth: JWT required (owner only).
+    Rate limit: None.
+    Tier: All tiers.
+
+    Args:
+        party_id: UUID of the party to delete.
+
+    Raises:
+        HTTPException: 403 if caller is not the party owner, 404 if not found.
+    """
     result = await db.execute(select(Party).where(Party.id == party_id))
     party = result.scalar_one_or_none()
     if not party:
@@ -208,5 +309,6 @@ async def delete_party(
     if party.owner_id != user["id"]:
         raise HTTPException(status_code=403, detail="Only the owner can delete a party")
 
+    # CASCADE: PartyMember rows are deleted via FK cascade in the schema
     await db.delete(party)
     await db.commit()

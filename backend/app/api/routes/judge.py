@@ -84,7 +84,7 @@ async def submit_query(
     )
 
     # Build namespace list from session
-    # TODO: resolve actual namespaces from session's rulesets + official catalog
+    # TODO(kasey, 2026-02-14): resolve actual namespaces from session's rulesets + official catalog
     namespaces = ["user_anonymous"]  # Placeholder
     if body.session_id:
         namespaces = [f"session_{body.session_id}"]

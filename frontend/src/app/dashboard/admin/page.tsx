@@ -1,3 +1,12 @@
+/**
+ * AdminPage.tsx — Admin Portal with system stats, user/publisher/tier management.
+ *
+ * Fetches data from GET /api/v1/admin/* endpoints (admin-only).
+ * Displays stats cards in Overview tab, and management tables in
+ * Users, Publishers, and Tiers tabs.
+ *
+ * Used by: /dashboard/admin route
+ */
 "use client";
 
 import { useState, useEffect } from "react";
