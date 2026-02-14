@@ -1,0 +1,17 @@
+aws_region     = "us-east-1"
+environment    = "prod"
+project_name   = "arbiter-ai"
+
+backend_image_tag  = "latest"
+frontend_image_tag = "latest"
+
+backend_cpu    = 512
+backend_memory = 1024
+frontend_cpu   = 256
+frontend_memory = 512
+
+backend_desired_count  = 2
+frontend_desired_count = 2
+
+# Required: ARN of the Secrets Manager secret containing all app env vars
+secrets_manager_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:arbiter-ai-prod-AbCdEf"
