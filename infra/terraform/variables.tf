@@ -74,3 +74,9 @@ variable "secrets_manager_arn" {
   description = "ARN of the Secrets Manager secret containing app env vars"
   type        = string
 }
+
+variable "github_repo" {
+  description = "GitHub repository (owner/name) for OIDC trust policy"
+  type        = string
+  default     = "gndumbri/arbiter-ai"
+}

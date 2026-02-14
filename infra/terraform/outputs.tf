@@ -32,3 +32,8 @@ output "frontend_service_name" {
   description = "Name of the frontend ECS service"
   value       = aws_ecs_service.frontend.name
 }
+
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC"
+  value       = aws_iam_role.github_actions.arn
+}
