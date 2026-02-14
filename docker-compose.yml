@@ -27,6 +27,22 @@ services:
       timeout: 3s
       retries: 5
 
+  celery_worker:
+    build: 
+      context: ./backend
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app
+      - uploads:/tmp/arbiter_uploads
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://arbiter:arbiter_dev@postgres:5432/arbiter
+      - REDIS_URL=redis://redis:6379/0
+      # Include all other env vars needed by providers here or via .env file
+    depends_on:
+      - redis
+      - postgres
+
 volumes:
   pgdata:
   redisdata:
+  uploads:
