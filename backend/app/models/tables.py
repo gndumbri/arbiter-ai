@@ -249,6 +249,23 @@ class Subscription(Base):
     user: Mapped[User] = relationship(back_populates="subscription")
 
 
+class SubscriptionTier(Base):
+    __tablename__ = "subscription_tiers"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True) # FREE, PRO
+    daily_query_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=5) # -1 for unlimited
+    stripe_product_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Party(Base):
     __tablename__ = "parties"
 

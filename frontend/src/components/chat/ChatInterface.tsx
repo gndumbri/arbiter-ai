@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./MessageBubble";
 import { CitationViewer } from "./CitationViewer";
-import { api, JudgeVerdict } from "@/lib/api";
+import { api, JudgeVerdict, VerdictCitation } from "@/lib/api";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
@@ -32,7 +32,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCitation, setSelectedCitation] = useState<unknown | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<VerdictCitation | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 

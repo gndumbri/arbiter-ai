@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 
-from app.api.deps import DbSession, GetSettings
+from app.api.deps import CurrentUser, DbSession, GetSettings
 from app.core.adjudication import AdjudicationEngine
 from app.core.registry import get_provider_registry
 from app.models.schemas import (
@@ -18,7 +19,7 @@ from app.models.schemas import (
     VerdictCitation,
     VerdictConflict,
 )
-from app.models.tables import QueryAuditLog
+from app.models.tables import QueryAuditLog, Subscription, SubscriptionTier
 
 router = APIRouter(prefix="/api/v1", tags=["judge"])
 logger = structlog.get_logger()
@@ -27,18 +28,52 @@ logger = structlog.get_logger()
 @router.post("/judge", response_model=JudgeVerdict)
 async def submit_query(
     body: JudgeQuery,
+    user: CurrentUser,
     db: DbSession,
     settings: GetSettings,
 ) -> JudgeVerdict:
     """Submit a rules question for adjudication.
 
-    The Judge processes the query through:
-    1. Query expansion (LLM rewrites for retrieval precision)
-    2. Hybrid search (dense + sparse across namespaces)
-    3. Cross-encoder reranking (top 50 → top 10)
-    4. Conflict detection (BASE vs EXPANSION)
-    5. Verdict generation (chain-of-thought reasoning)
+    Enforces billing limits based on user's subscription tier.
     """
+    # 1. Resolve User Tier
+    # Check for active subscription
+    stmt = select(Subscription).where(Subscription.user_id == user["id"])
+    result = await db.execute(stmt)
+    subscription = result.scalar_one_or_none()
+
+    tier_name = subscription.plan_tier if subscription else "FREE"
+
+    # 2. Get Tier Limits
+    tier_stmt = select(SubscriptionTier).where(SubscriptionTier.name == tier_name)
+    tier_result = await db.execute(tier_stmt)
+    tier_config = tier_result.scalar_one_or_none()
+
+    # Fallback if tier config missing (should include seed data)
+    daily_limit = tier_config.daily_query_limit if tier_config else 5
+
+    # 3. Check Usage (if not unlimited)
+    if daily_limit != -1:
+        start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        usage_stmt = (
+            select(func.count(QueryAuditLog.id))
+            .where(QueryAuditLog.user_id == user["id"])
+            .where(QueryAuditLog.created_at >= start_of_day)
+        )
+        usage_result = await db.execute(usage_stmt)
+        usage_count = usage_result.scalar_one() or 0
+
+        if usage_count >= daily_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Daily query limit reached ({usage_count}/{daily_limit}). "
+                    "Upgrade to Pro for unlimited queries."
+                ),
+            )
+
+    # 4. Proceed with Adjudication...
     registry = get_provider_registry()
 
     engine = AdjudicationEngine(
@@ -71,6 +106,7 @@ async def submit_query(
     audit = QueryAuditLog(
         id=uuid.UUID(verdict.query_id),
         session_id=body.session_id,
+        user_id=user["id"],
         query_text=body.query,
         expanded_query=verdict.expanded_query,
         verdict_summary=verdict.verdict[:500] if verdict.verdict else None,

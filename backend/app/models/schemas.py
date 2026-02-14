@@ -34,6 +34,8 @@ class UserRead(BaseModel):
 
 class SessionCreate(BaseModel):
     game_name: str = Field(..., min_length=1, max_length=200)
+    persona: str | None = None
+    system_prompt_override: str | None = None
 
 
 class SessionRead(BaseModel):
