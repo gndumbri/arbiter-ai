@@ -4,6 +4,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, MessageSquare, FileText, CheckCircle, AlertCircle } from "lucide-react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,36 +45,44 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {rulesets?.map((ruleset) => (
-            <Card key={ruleset.id} className="flex flex-col">
-              <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="overflow-hidden text-ellipsis whitespace-nowrap text-lg font-semibold w-full pr-2" title={ruleset.game_name}>
-                  {ruleset.game_name}
-                </CardTitle>
-                <StatusBadge status={ruleset.status} />
-              </CardHeader>
-              <CardContent className="flex-1">
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p className="truncate" title={ruleset.filename}>{ruleset.filename}</p>
-                  <p>Chunks: {ruleset.chunk_count}</p>
-                  <p>
-                    Uploaded{" "}
-                    {ruleset.created_at
-                      ? formatDistanceToNow(new Date(ruleset.created_at), { addSuffix: true })
-                      : "Recently"}
-                  </p>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button asChild className="w-full" disabled={ruleset.status !== "INDEXED" && ruleset.status !== "COMPLETE"}> 
-                  {/* Status might be INDEXED or COMPLETE depending on backend - rules.py used INDEXED in Phase 2, but recent edit used PROCESSING. Logic should check. */}
-                  <Link href={`/session/${ruleset.session_id}`}>
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Start Session
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
+          {rulesets?.map((ruleset, index) => (
+            <motion.div
+              key={ruleset.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1, duration: 0.3 }}
+            >
+              <Card className="flex flex-col h-full hover:shadow-lg hover:border-primary/50 transition-all duration-300">
+                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="overflow-hidden text-ellipsis whitespace-nowrap text-lg font-bold w-full pr-2" title={ruleset.game_name}>
+                    {ruleset.game_name}
+                  </CardTitle>
+                  <StatusBadge status={ruleset.status} />
+                </CardHeader>
+                <CardContent className="flex-1">
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p className="truncate font-mono text-xs" title={ruleset.filename}>{ruleset.filename}</p>
+                    <p className="text-xs">
+                      <span className="font-semibold text-foreground">{ruleset.chunk_count}</span> Rules Indexed
+                    </p>
+                    <p className="text-xs">
+                      {ruleset.created_at
+                        ? formatDistanceToNow(new Date(ruleset.created_at), { addSuffix: true })
+                        : "Recently"}
+                    </p>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button asChild className="w-full relative group overflow-hidden" disabled={ruleset.status !== "INDEXED" && ruleset.status !== "COMPLETE" && ruleset.status !== "READY"}> 
+                    <Link href={`/session/${ruleset.session_id}`}>
+                      <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Start Session
+                    </Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </motion.div>
           ))}
         </div>
       )}

@@ -1,9 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, FileText, AlertTriangle, Lightbulb } from "lucide-react";
+import { Lightbulb, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,113 +11,140 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { motion } from "framer-motion";
 
 interface MessageBubbleProps {
-  role: "user" | "assistant";
-  content: string;
-  verdict?: any; // strict typing later
+  message: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    verdict?: any;
+    timestamp?: Date;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onCitationClick?: (citation: any) => void;
 }
 
-export function MessageBubble({ role, content, verdict, onCitationClick }: MessageBubbleProps) {
-  const isUser = role === "user";
+export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) {
+  const isUser = message.role === "user";
+  const { verdict } = message;
 
   return (
-    <div className={cn("flex w-full gap-3 p-4", isUser ? "justify-end" : "justify-start")}>
-      {!isUser && (
-        <Avatar className="h-8 w-8 border">
-          <AvatarFallback><Bot className="h-4 w-4" /></AvatarFallback>
-          <AvatarImage src="/bot-avatar.png" />
-        </Avatar>
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.3 }}
+      className={cn(
+        "flex w-full gap-3 md:gap-4",
+        isUser ? "flex-row-reverse" : "flex-row"
       )}
+    >
+      <Avatar className={cn("h-8 w-8 md:h-10 md:w-10 ring-2 ring-offset-2 ring-offset-background", isUser ? "ring-secondary" : "ring-primary")}>
+        {isUser ? (
+          <AvatarFallback className="bg-secondary text-secondary-foreground font-bold">ME</AvatarFallback>
+        ) : (
+          <AvatarFallback className="bg-primary text-primary-foreground font-bold">AI</AvatarFallback>
+        )}
+      </Avatar>
 
-      <div className={cn(
-        "flex max-w-[85%] flex-col gap-2 rounded-lg p-4",
-        isUser ? "bg-primary text-primary-foreground" : "bg-muted"
-      )}>
-        <div className="prose prose-sm dark:prose-invert break-words">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {content}
-          </ReactMarkdown>
+      <div className={cn("flex flex-col gap-2 max-w-[85%] md:max-w-[75%]", isUser ? "items-end" : "items-start")}>
+        <div
+          className={cn(
+            "rounded-2xl px-5 py-4 text-sm md:text-base shadow-lg relative overflow-hidden",
+            isUser
+              ? "bg-secondary text-secondary-foreground rounded-tr-sm"
+              : "bg-card text-card-foreground border border-border/50 rounded-tl-sm"
+          )}
+        >
+          {/* Subtle gradient overlay for AI bubbles */}
+          {!isUser && (
+             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+          )}
+
+          {/* Verdict Badge */}
+          {verdict && !isUser && (
+            <div className="relative mb-3 flex flex-wrap items-center gap-2 border-b border-border/10 pb-2">
+               <Badge 
+                  variant={verdict.verdict.includes("ALLOW") ? "outline" : "destructive"}
+                  className={cn(
+                    "text-xs uppercase tracking-wider font-bold shadow-sm",
+                     verdict.verdict.includes("ALLOW") ? "border-green-500/50 text-green-500" : "border-red-500/50"
+                  )}
+                >
+                 {verdict.verdict}
+               </Badge>
+               {verdict.confidence && (
+                 <span className="text-xs text-muted-foreground font-mono">
+                   {Math.round(verdict.confidence * 100)}% CONFIDENCE
+                 </span>
+               )}
+            </div>
+          )}
+
+          {/* Reasoning Chain Collapsible */}
+           {verdict && verdict.reasoning_chain && (
+             <Accordion type="single" collapsible className="relative mb-3 w-full border-b border-border/10">
+               <AccordionItem value="reasoning" className="border-none">
+                 <AccordionTrigger className="py-1 text-xs text-muted-foreground hover:text-primary hover:no-underline font-mono uppercase tracking-wider flex items-center gap-2">
+                   <Lightbulb className="h-3 w-3" /> Analysis Chain
+                 </AccordionTrigger>
+                 <AccordionContent className="text-xs text-muted-foreground italic pl-3 border-l-2 border-primary/20 my-2">
+                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                     {verdict.reasoning_chain}
+                   </ReactMarkdown>
+                 </AccordionContent>
+               </AccordionItem>
+             </Accordion>
+           )}
+
+          {/* Main Content */}
+          <div className="relative prose prose-sm dark:prose-invert break-words leading-relaxed">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
         </div>
 
-        {verdict && (
-          <div className="mt-4 space-y-3 border-t pt-3">
-            {/* Verdict meta */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-medium">Confidence:</span>
-              <Badge variant={verdict.confidence > 0.8 ? "default" : "secondary"} className={cn("px-1 py-0 text-[10px]", verdict.confidence > 0.8 ? "bg-green-600" : "bg-yellow-600")}>
-                {Math.round(verdict.confidence * 100)}%
-              </Badge>
-            </div>
-
-            {/* Citations */}
-            {verdict.citations && verdict.citations.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {verdict.citations.map((citation: any, i: number) => (
-                  <Button
-                    key={i}
-                    variant="outline"
-                    size="sm"
-                    className="h-6 gap-1 text-xs bg-background/50"
-                    onClick={() => onCitationClick?.(citation)}
-                  >
-                    <FileText className="h-3 w-3" />
-                    {citation.source} {citation.page ? `p.${citation.page}` : ""}
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {/* Conflicts / Reasoning */}
-            {(verdict.conflicts?.length > 0 || verdict.reasoning_chain) && (
-              <Accordion type="single" collapsible className="w-full">
-                {verdict.conflicts?.length > 0 && (
-                  <AccordionItem value="conflicts" className="border-b-0">
-                    <AccordionTrigger className="py-2 text-xs font-medium text-amber-600 dark:text-amber-400">
-                      <div className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        Conflicts Detected ({verdict.conflicts.length})
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="text-xs">
-                      <ul className="list-disc pl-4 space-y-1">
-                        {verdict.conflicts.map((c: any, i: number) => (
-                          <li key={i}>
-                            <span className="font-semibold">Conflict:</span> {c.description}
-                            <br />
-                            <span className="font-semibold text-green-600">Resolution:</span> {c.resolution}
-                          </li>
-                        ))}
-                      </ul>
-                    </AccordionContent>
-                  </AccordionItem>
-                )}
-                
-                 {verdict.reasoning_chain && (
-                  <AccordionItem value="reasoning" className="border-b-0">
-                    <AccordionTrigger className="py-2 text-xs font-medium text-muted-foreground">
-                       <div className="flex items-center gap-1">
-                        <Lightbulb className="h-3 w-3" />
-                        Show Reasoning
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-background/50 p-2 rounded">
-                      {verdict.reasoning_chain}
-                    </AccordionContent>
-                  </AccordionItem>
-                )}
-              </Accordion>
-            )}
-          </div>
+        {/* Citations Grid */}
+        {verdict && verdict.citations && verdict.citations.length > 0 && (
+           <motion.div 
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             transition={{ delay: 0.2 }}
+             className="grid grid-cols-1 gap-2 sm:grid-cols-2 w-full mt-1"
+           >
+             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+             {verdict.citations.map((citation: any, idx: number) => (
+               <Card 
+                 key={idx} 
+                 className="cursor-pointer bg-card/50 hover:bg-card transition-all border-primary/20 hover:border-primary/60 group overflow-hidden"
+                 onClick={() => onCitationClick?.(citation)}
+               >
+                 <CardContent className="p-3 flex items-start gap-3 relative">
+                   <div className="absolute inset-y-0 left-0 w-1 bg-primary/20 group-hover:bg-primary transition-colors" />
+                   <FileText className="h-4 w-4 text-primary mt-1 shrink-0 group-hover:scale-110 transition-transform" />
+                   <div className="flex flex-col gap-1 overflow-hidden">
+                     <p className="text-xs font-bold truncate text-foreground group-hover:text-primary transition-colors">
+                       {citation.source_file || "Unknown Source"}
+                     </p>
+                     <p className="text-[10px] text-muted-foreground line-clamp-2 leading-snug">
+                       &quot;{citation.text}&quot;
+                     </p>
+                   </div>
+                 </CardContent>
+               </Card>
+             ))}
+           </motion.div>
+        )}
+        
+        {/* Timestamp */}
+        {message.timestamp && (
+            <span className="text-[10px] text-muted-foreground opacity-50 px-1 select-none">
+            {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
         )}
       </div>
-
-      {isUser && (
-        <Avatar className="h-8 w-8">
-          <AvatarFallback><User className="h-4 w-4" /></AvatarFallback>
-        </Avatar>
-      )}
-    </div>
+    </motion.div>
   );
 }
