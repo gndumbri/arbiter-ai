@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     # Reranker
     cohere_api_key: str = ""
 
+    # Provider selection — swap implementations via env var
+    llm_provider: str = "openai"  # "openai" | "anthropic"
+    embedding_provider: str = "openai"  # "openai"
+    vector_store_provider: str = "pinecone"  # "pinecone"
+    reranker_provider: str = "cohere"  # "cohere" | "none"
+    parser_provider: str = "docling"  # "docling"
+
+    # LLM model defaults
+    llm_model: str = "gpt-4o"  # Primary model for verdicts
+    llm_model_fast: str = "gpt-4o-mini"  # Cheap model for classification
+    embedding_model: str = "text-embedding-3-small"
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

@@ -67,9 +67,10 @@ class RulesetStatusRead(BaseModel):
 class JudgeQuery(BaseModel):
     session_id: uuid.UUID
     query: str = Field(..., min_length=1, max_length=500)
+    game_name: str | None = None
 
 
-class Citation(BaseModel):
+class VerdictCitation(BaseModel):
     source: str
     page: int | None = None
     section: str | None = None
@@ -77,9 +78,17 @@ class Citation(BaseModel):
     is_official: bool = False
 
 
-class Conflict(BaseModel):
+# Alias for backward compatibility
+Citation = VerdictCitation
+
+
+class VerdictConflict(BaseModel):
     description: str
     resolution: str
+
+
+# Alias for backward compatibility
+Conflict = VerdictConflict
 
 
 class JudgeVerdict(BaseModel):
@@ -87,14 +96,18 @@ class JudgeVerdict(BaseModel):
     reasoning_chain: str | None = None
     confidence: float = Field(..., ge=0.0, le=1.0)
     confidence_reason: str | None = None
-    citations: list[Citation]
-    conflicts: list[Conflict] | None = None
+    citations: list[VerdictCitation]
+    conflicts: list[VerdictConflict] | None = None
     follow_up_hint: str | None = None
     query_id: uuid.UUID
 
 
-class FeedbackSubmit(BaseModel):
+class FeedbackRequest(BaseModel):
     feedback: str = Field(..., pattern="^(up|down)$")
+
+
+# Alias for backward compatibility
+FeedbackSubmit = FeedbackRequest
 
 
 # ─── Library ───────────────────────────────────────────────────────────────────
