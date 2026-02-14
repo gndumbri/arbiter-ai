@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { ArrowRight, BookOpen, Bot, CheckCircle, Shield } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useSession, signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
-  const { user, login } = useAuth();
+  const { data: session } = useSession();
+  const user = session?.user;
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -25,7 +26,7 @@ export default function LandingPage() {
                   <Link href="/dashboard">Dashboard</Link>
                 </Button>
               ) : (
-                <Button variant="ghost" onClick={login}>
+                <Button variant="ghost" onClick={() => signIn()}>
                   Login
                 </Button>
               )}
@@ -34,24 +35,36 @@ export default function LandingPage() {
         </div>
       </header>
       <main className="flex-1">
-        <section className="space-y-6 pb-8 pt-6 md:pb-12 md:pt-10 lg:py-32">
+        <section className="space-y-6 pb-8 pt-6 md:pb-12 md:pt-10 lg:py-32 relative overflow-hidden">
+           {/* Background Gradient Blob */}
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/20 rounded-full blur-3xl -z-10 animate-pulse" />
+
           <div className="container flex max-w-[64rem] flex-col items-center gap-4 text-center">
-            <h1 className="font-heading text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tighter">
-              The AI Referee for Your Board Games
+            <div className="rounded-2xl bg-muted px-4 py-1.5 text-sm font-medium text-muted-foreground mb-4 border border-primary/20">
+              Arbiter AI v1.0 Now Live
+            </div>
+            <h1 className="font-heading text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-br from-foreground to-muted-foreground">
+              The AI Referee <br className="hidden sm:inline" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+                For Your Tabletop.
+              </span>
             </h1>
-            <p className="max-w-[42rem] leading-normal text-muted-foreground sm:text-xl sm:leading-8">
-              Upload your rulebook. Resolve disputes instantly. Arbiter AI validates queries against game rules with precision and citations.
+            <p className="max-w-[42rem] leading-normal text-muted-foreground sm:text-xl sm:leading-8 mt-4">
+              Stop arguing about line-of-sight and obscure errata. Upload your rulebooks and let our Agentic AI resolve disputes instantly with citations.
             </p>
-            <div className="space-x-4">
+            <div className="space-x-4 mt-8">
               {user ? (
-                <Button asChild size="lg">
-                  <Link href="/dashboard">Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                <Button asChild size="lg" className="rounded-full shadow-lg shadow-primary/20">
+                  <Link href="/dashboard">Resume Campaign <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
               ) : (
-                <Button onClick={login} size="lg">
-                  Try Demo Session
+                <Button onClick={() => signIn()} size="lg" className="rounded-full px-8 text-lg shadow-lg shadow-primary/20 hover:scale-105 transition-transform">
+                  Roll for Initiative
                 </Button>
               )}
+              <Button asChild variant="outline" size="lg" className="rounded-full">
+                <Link href="#features">Learn More</Link>
+              </Button>
             </div>
           </div>
         </section>
@@ -92,11 +105,33 @@ export default function LandingPage() {
             </div>
             <div className="relative overflow-hidden rounded-lg border bg-background p-2">
               <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
-                <CheckCircle className="h-12 w-12" />
+                <BookOpen className="h-12 w-12 text-violet-500" />
+                <div className="space-y-2">
+                  <h3 className="font-bold">Rule Ingestion (Library)</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Upload your tomes (PDFs) and get instant semantic indexing.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="relative overflow-hidden rounded-lg border bg-background p-2">
+              <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
+                <Bot className="h-12 w-12 text-indigo-500" />
+                <div className="space-y-2">
+                  <h3 className="font-bold">AI Game Master</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Ask complex rules questions and get verdicts with citations.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="relative overflow-hidden rounded-lg border bg-background p-2">
+              <div className="flex h-[180px] flex-col justify-between rounded-md p-6">
+                <CheckCircle className="h-12 w-12 text-green-500" />
                 <div className="space-y-2">
                   <h3 className="font-bold">Conflict Resolution</h3>
                   <p className="text-sm text-muted-foreground">
-                    Handles errata and expansion conflicts automatically.
+                    Handles errata and expansion conflicts. No more table flip arguments.
                   </p>
                 </div>
               </div>

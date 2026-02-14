@@ -32,7 +32,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedCitation, setSelectedCitation] = useState<any | null>(null);
+  const [selectedCitation, setSelectedCitation] = useState<unknown | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -109,9 +109,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
               {messages.map((msg) => (
                 <MessageBubble
                   key={msg.id}
-                  role={msg.role}
-                  content={msg.content}
-                  verdict={msg.verdict}
+                  message={msg}
                   onCitationClick={setSelectedCitation}
                 />
               ))}

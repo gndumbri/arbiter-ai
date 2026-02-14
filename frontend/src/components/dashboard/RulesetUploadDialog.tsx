@@ -74,7 +74,7 @@ export function RulesetUploadDialog() {
         <DialogHeader>
           <DialogTitle>Upload Game Rules</DialogTitle>
           <DialogDescription>
-            Upload a PDF of the rulebook. We'll index it for the AI Judge.
+            Upload a PDF of the rulebook. We&apos;ll index it for the AI Judge.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">

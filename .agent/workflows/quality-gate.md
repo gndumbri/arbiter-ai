@@ -104,21 +104,12 @@ Reference: `.agent/workflows/end-to-end.md`
 
 ---
 
-## Gate 5: Code Commenting (`/commenting`)
+## Gate 5: Build & Code Quality (`/build`)
 
-Reference: `.agent/workflows/commenting.md`
+Reference: `.agent/workflows/build.md`
 
-- [ ] Module docstrings present in every modified file
-- [ ] Function docstrings (Args/Returns/Raises) present
+- [ ] Module/Function docstrings present (checked by Ruff where possible)
 - [ ] Inline comments explain WHY, not WHAT
-- [ ] TODOs include name and date (`TODO(user, date): ...`)
-- [ ] No stale comments
-- [ ] API routes document auth/rate-limits
-
----
-
-## Gate 6: Build Clean
-
 - [ ] Backend builds without errors:
 
 ```bash
@@ -139,11 +130,7 @@ cd backend && ruff check app/
 ```
 
 - [ ] No console warnings in browser during manual verification
-- [ ] Git working tree is clean (no unstaged changes):
-
-```bash
-git status --short
-```
+- [ ] Git working tree is clean (no unstaged changes)
 
 ---
 
