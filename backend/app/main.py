@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-
-import logging
 
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import register_middleware
-from app.api.routes import health, sessions
+from app.api.routes import health, judge, rules, sessions
 from app.config import get_settings
 
 _settings = get_settings()
@@ -71,6 +70,8 @@ def create_app() -> FastAPI:
     # Routes
     app.include_router(health.router)
     app.include_router(sessions.router)
+    app.include_router(rules.router)
+    app.include_router(judge.router)
 
     return app
 

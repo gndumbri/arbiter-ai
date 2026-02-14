@@ -104,7 +104,20 @@ Reference: `.agent/workflows/end-to-end.md`
 
 ---
 
-## Gate 5: Build Clean
+## Gate 5: Code Commenting (`/commenting`)
+
+Reference: `.agent/workflows/commenting.md`
+
+- [ ] Module docstrings present in every modified file
+- [ ] Function docstrings (Args/Returns/Raises) present
+- [ ] Inline comments explain WHY, not WHAT
+- [ ] TODOs include name and date (`TODO(user, date): ...`)
+- [ ] No stale comments
+- [ ] API routes document auth/rate-limits
+
+---
+
+## Gate 6: Build Clean
 
 - [ ] Backend builds without errors:
 
