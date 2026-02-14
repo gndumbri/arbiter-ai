@@ -48,11 +48,16 @@ class Settings(BaseSettings):
     # Reranker
     cohere_api_key: str = ""
 
+    # AWS Bedrock
+    aws_region: str = "us-east-1"
+    bedrock_llm_model_id: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
+
     # Provider selection — swap implementations via env var
-    llm_provider: str = "openai"  # "openai" | "anthropic"
-    embedding_provider: str = "openai"  # "openai"
+    llm_provider: str = "openai"  # "openai" | "anthropic" | "bedrock"
+    embedding_provider: str = "openai"  # "openai" | "bedrock"
     vector_store_provider: str = "pinecone"  # "pinecone"
-    reranker_provider: str = "cohere"  # "cohere" | "none"
+    reranker_provider: str = "cohere"  # "cohere" | "flashrank" | "none"
     parser_provider: str = "docling"  # "docling"
 
     # LLM model defaults

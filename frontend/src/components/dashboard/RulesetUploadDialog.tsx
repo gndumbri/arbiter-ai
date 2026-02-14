@@ -33,7 +33,7 @@ export function RulesetUploadDialog() {
     try {
       // 1. Create a session for this game upload (one-off per upload for now?)
       // Actually, better to create session first.
-      const session = await api.createSession(gameName);
+      const session = await api.createSession({ game_name: gameName });
 
       // 2. Upload file
       const formData = new FormData();
