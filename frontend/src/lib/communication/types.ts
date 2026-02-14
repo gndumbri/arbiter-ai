@@ -4,7 +4,7 @@ export interface EmailMessage {
   html?: string;
   text?: string;
   templateId?: number;
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
   tags?: string[];
 }
 

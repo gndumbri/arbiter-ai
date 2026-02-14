@@ -57,10 +57,10 @@ async def list_sessions(
     from sqlalchemy import select
 
     stmt = select(Session).where(Session.user_id == user["id"])
-    
+
     if persona_only:
         stmt = stmt.where(Session.persona.is_not(None))
-        
+
     stmt = stmt.order_by(Session.created_at.desc())
     result = await db.execute(stmt)
     return [SessionRead.model_validate(s) for s in result.scalars().all()]
