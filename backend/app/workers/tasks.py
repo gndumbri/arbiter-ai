@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 from uuid import UUID
 
 from celery import shared_task
@@ -14,7 +13,6 @@ from app.core.ingestion import IngestionPipeline
 from app.core.registry import get_provider_registry
 from app.models.database import get_async_session
 from app.models.tables import RulesetMetadata
-from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
@@ -117,4 +115,5 @@ def ingest_ruleset(
     except Exception as exc:
         # Retry only on specific transient errors if needed
         # For now, just fail hard to avoid infinite loops on bad PDFs
-        raise self.retry(exc=exc, countdown=60) if False else exc
+        # raise self.retry(exc=exc, countdown=60) if False else exc
+        raise exc from exc

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.middleware import register_middleware
-from app.api.routes import health, judge, rules, sessions
+from app.api.routes import catalog, health, judge, publishers, rules, sessions
 from app.config import get_settings
 
 _settings = get_settings()
@@ -72,6 +72,8 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(rules.router)
     app.include_router(judge.router)
+    app.include_router(publishers.router)
+    app.include_router(catalog.router)
 
     return app
 
