@@ -73,7 +73,7 @@ export default function AgentsPage() {
                   <div className="text-sm text-muted-foreground space-y-2">
                     {agent.persona && (
                       <p className="line-clamp-2 text-xs italic">
-                        "{agent.persona}"
+                        &quot;{agent.persona}&quot;
                       </p>
                     )}
                     <p className="text-xs">

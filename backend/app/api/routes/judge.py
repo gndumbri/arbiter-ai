@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, HTTPException
-from datetime import datetime, timezone
-
 from sqlalchemy import func, select, update
 
 from app.api.deps import CurrentUser, DbSession, GetSettings
@@ -42,21 +41,21 @@ async def submit_query(
     stmt = select(Subscription).where(Subscription.user_id == user["id"])
     result = await db.execute(stmt)
     subscription = result.scalar_one_or_none()
-    
+
     tier_name = subscription.plan_tier if subscription else "FREE"
-    
+
     # 2. Get Tier Limits
     tier_stmt = select(SubscriptionTier).where(SubscriptionTier.name == tier_name)
     tier_result = await db.execute(tier_stmt)
     tier_config = tier_result.scalar_one_or_none()
-    
+
     # Fallback if tier config missing (should include seed data)
     daily_limit = tier_config.daily_query_limit if tier_config else 5
-    
+
     # 3. Check Usage (if not unlimited)
     if daily_limit != -1:
-        start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        
+        start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
         usage_stmt = (
             select(func.count(QueryAuditLog.id))
             .where(QueryAuditLog.user_id == user["id"])
@@ -64,11 +63,14 @@ async def submit_query(
         )
         usage_result = await db.execute(usage_stmt)
         usage_count = usage_result.scalar_one() or 0
-        
+
         if usage_count >= daily_limit:
             raise HTTPException(
                 status_code=429,
-                detail=f"Daily query limit reached ({usage_count}/{daily_limit}). Upgrade to Pro for unlimited queries.",
+                detail=(
+                    f"Daily query limit reached ({usage_count}/{daily_limit}). "
+                    "Upgrade to Pro for unlimited queries."
+                ),
             )
 
     # 4. Proceed with Adjudication...

@@ -100,6 +100,18 @@ class ProviderRegistry:
             from app.core.providers import docling_parser  # noqa: F401
         except ImportError:
             logger.debug("docling_parser provider not available")
+        try:
+            from app.core.providers import bedrock_llm  # noqa: F401
+        except ImportError:
+            logger.debug("bedrock_llm provider not available")
+        try:
+            from app.core.providers import bedrock_embedding  # noqa: F401
+        except ImportError:
+            logger.debug("bedrock_embedding provider not available")
+        try:
+            from app.core.providers import flashrank_reranker  # noqa: F401
+        except ImportError:
+            logger.debug("flashrank_reranker provider not available")
 
     def _resolve(
         self,
