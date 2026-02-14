@@ -124,6 +124,7 @@ class Verdict:
     query_id: str
     latency_ms: int = 0
     expanded_query: str = ""
+    model: str = "unknown"
 
 
 # ─── The Judge ─────────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ class AdjudicationEngine:
 
         # Step 6: Verdict Generation
         context = self._build_context(sorted_chunks, unique_matches, conflicts)
-        verdict = await self._generate_verdict(query, context)
+        verdict_data, model_name = await self._generate_verdict(query, context)
 
         # Build citations from top chunks
         citations = self._extract_citations(sorted_chunks, unique_matches)
@@ -226,19 +227,20 @@ class AdjudicationEngine:
         latency_ms = self._elapsed_ms(start)
 
         return Verdict(
-            verdict=verdict.get("verdict", ""),
-            reasoning_chain=verdict.get("reasoning_chain"),
-            confidence=float(verdict.get("confidence", 0.5)),
-            confidence_reason=verdict.get("confidence_reason"),
+            verdict=verdict_data.get("verdict", ""),
+            reasoning_chain=verdict_data.get("reasoning_chain"),
+            confidence=float(verdict_data.get("confidence", 0.5)),
+            confidence_reason=verdict_data.get("confidence_reason"),
             citations=citations,
             conflicts=[
                 Conflict(description=c["description"], resolution=c["resolution"])
-                for c in (verdict.get("conflicts") or [])
+                for c in (verdict_data.get("conflicts") or [])
             ] or (conflicts if conflicts else None),
-            follow_up_hint=verdict.get("follow_up_hint"),
+            follow_up_hint=verdict_data.get("follow_up_hint"),
             query_id=query_id,
             latency_ms=latency_ms,
             expanded_query=expanded_query,
+            model=model_name,
         )
 
     # ─── Step 1: Query Expansion ──────────────────────────────────────────────
@@ -326,7 +328,7 @@ class AdjudicationEngine:
         self,
         query: str,
         context: str,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], str]:
         """Generate the final verdict using the LLM."""
         try:
             response = await self._llm.complete(
@@ -341,7 +343,7 @@ class AdjudicationEngine:
                 max_tokens=2048,
                 response_format={"type": "json_object"},
             )
-            return json.loads(response.content)
+            return json.loads(response.content), response.model
         except json.JSONDecodeError:
             logger.warning("Failed to parse verdict JSON, returning raw")
             return {
@@ -349,7 +351,7 @@ class AdjudicationEngine:
                 "confidence": 0.3,
                 "confidence_reason": "Failed to parse structured response",
                 "citations": [],
-            }
+            }, "unknown"
         except Exception as exc:
             logger.exception("Verdict generation failed")
             return {
@@ -357,7 +359,7 @@ class AdjudicationEngine:
                 "confidence": 0.0,
                 "confidence_reason": "Internal error",
                 "citations": [],
-            }
+            }, "unknown"
 
     # ─── Helpers ──────────────────────────────────────────────────────────────
 

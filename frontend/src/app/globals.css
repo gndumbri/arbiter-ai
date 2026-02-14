@@ -77,3 +77,13 @@
     transform: translateY(0);
   }
 }
+
+@keyframes shimmer {
+  to {
+    transform: translateX(200%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}

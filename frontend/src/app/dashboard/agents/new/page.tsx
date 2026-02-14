@@ -183,7 +183,7 @@ export default function NewAgentPage() {
                       className="hidden" 
                     />
                     {uploadFile && (
-                      <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 px-3 py-1 rounded-full mt-2">
+                      <div className="flex items-center gap-2 text-sm text-green-400 bg-green-500/10 px-3 py-1 rounded-full mt-2">
                         <FileText className="h-4 w-4" />
                         {uploadFile.name}
                       </div>
@@ -209,7 +209,7 @@ export default function NewAgentPage() {
               <CardDescription>Your agent has been created successfully.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center space-y-4 py-8">
-              <div className="rounded-full bg-green-100 p-3">
+              <div className="rounded-full bg-green-500/15 p-3">
                 <CheckCircle className="h-12 w-12 text-green-600" />
               </div>
               <h3 className="text-lg font-semibold">{formData.name}</h3>

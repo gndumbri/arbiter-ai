@@ -145,6 +145,7 @@ async def submit_query(
             for c in verdict.conflicts
         ] if verdict.conflicts else None,
         follow_up_hint=verdict.follow_up_hint,
+        model=verdict.model,
     )
 
 
