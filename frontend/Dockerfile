@@ -1,5 +1,5 @@
 # ---------- Stage 1: deps ----------
-FROM node:22-alpine AS deps
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
@@ -7,7 +7,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 # ---------- Stage 2: builder ----------
-FROM node:22-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # ---------- Stage 3: runtime ----------
-FROM node:22-alpine AS runtime
+FROM node:20-alpine AS runtime
 
 RUN addgroup --system --gid 1001 appuser && \
     adduser --system --uid 1001 appuser
