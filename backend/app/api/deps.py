@@ -66,7 +66,7 @@ async def get_current_user(
             detail={"code": "UNAUTHORIZED", "message": "Missing or invalid authorization header"},
         )
 
-    # TODO: Replace with actual Supabase JWT validation
+    # TODO(kasey, 2026-02-14): Replace with actual Supabase JWT validation
     # For now, return a stub user for development
     # Try to decode email from token (assuming unencrypted JWT for dev)
     import jwt

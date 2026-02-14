@@ -1,3 +1,12 @@
+/**
+ * PartiesPage.tsx — Party management for shared game sessions.
+ *
+ * Create/join/leave/delete parties via /api/v1/parties endpoints.
+ * Supports clipboard-based invite links with party ID extraction.
+ * Uses SWR for live data + optimistic UI via mutate().
+ *
+ * Used by: /dashboard/parties route
+ */
 "use client";
 
 import { useState } from "react";

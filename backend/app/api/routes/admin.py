@@ -1,6 +1,10 @@
-"""Admin routes — dashboard stats, publisher management, tier configuration.
+"""admin.py — Admin dashboard, user management, and tier configuration.
 
-Protected by AdminUser dependency (requires role='ADMIN').
+Provides admin-only endpoints for viewing system statistics, managing
+user roles, publisher verification, and subscription tier limits.
+
+Called by: Frontend admin page (/dashboard/admin)
+Depends on: deps.py (CurrentUser, DbSession), tables.py (User, Publisher, etc.)
 """
 
 from __future__ import annotations
@@ -29,7 +33,14 @@ logger = structlog.get_logger()
 
 
 def _require_admin(user: dict) -> None:
-    """Raise 403 if user is not an admin."""
+    """Raise 403 if user is not an admin.
+
+    Args:
+        user: The current user context dict from the auth dependency.
+
+    Raises:
+        HTTPException: 403 if user role is not ADMIN.
+    """
     if user.get("role", "USER") != "ADMIN":
         raise HTTPException(status_code=403, detail="Admin access required")
 
@@ -39,7 +50,15 @@ def _require_admin(user: dict) -> None:
 
 @router.get("/stats")
 async def get_admin_stats(user: CurrentUser, db: DbSession) -> dict:
-    """Get system-wide statistics for the admin dashboard."""
+    """Get system-wide statistics for the admin dashboard.
+
+    Auth: JWT required (admin only).
+    Rate limit: None (admin endpoints are not rate-limited).
+    Tier: ADMIN role required.
+
+    Returns:
+        Dict with total counts for users, sessions, queries, rulesets, publishers.
+    """
     _require_admin(user)
 
     total_users = (await db.execute(select(func.count(User.id)))).scalar_one()
@@ -62,9 +81,18 @@ async def get_admin_stats(user: CurrentUser, db: DbSession) -> dict:
 
 @router.get("/users")
 async def list_users(user: CurrentUser, db: DbSession) -> list[dict]:
-    """List all users with subscription info."""
+    """List all users with role and creation info.
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Returns:
+        List of user dicts (id, email, name, role, created_at). Capped at 100 most recent.
+    """
     _require_admin(user)
 
+    # Cap at 100 to prevent unbounded result sets in the admin UI
     result = await db.execute(
         select(User).order_by(User.created_at.desc()).limit(100)
     )
@@ -89,7 +117,22 @@ async def update_user_role(
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
-    """Update a user's role (USER/ADMIN)."""
+    """Update a user's role (USER or ADMIN).
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Args:
+        user_id: UUID of the user to update.
+        body: Dict with 'role' key set to 'USER' or 'ADMIN'.
+
+    Returns:
+        Confirmation dict with user_id and new role.
+
+    Raises:
+        HTTPException: 400 if role value is invalid, 404 if user not found.
+    """
     _require_admin(user)
 
     new_role = body.get("role", "USER")
@@ -110,7 +153,15 @@ async def update_user_role(
 
 @router.get("/publishers")
 async def list_publishers(user: CurrentUser, db: DbSession) -> list[dict]:
-    """List all publishers."""
+    """List all publishers with verification status.
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Returns:
+        List of publisher dicts sorted by most recent first.
+    """
     _require_admin(user)
 
     result = await db.execute(
@@ -138,9 +189,25 @@ async def update_publisher(
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
-    """Update publisher details."""
+    """Update publisher details (name, email, verification status).
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Args:
+        publisher_id: UUID of the publisher to update.
+        body: Dict with optional 'name', 'contact_email', 'verified' fields.
+
+    Returns:
+        Confirmation dict with publisher_id and list of updated field names.
+
+    Raises:
+        HTTPException: 400 if no updatable fields provided, 404 if not found.
+    """
     _require_admin(user)
 
+    # Only allow updating whitelisted fields to prevent mass-assignment
     update_data = {}
     if "name" in body:
         update_data["name"] = body["name"]
@@ -166,7 +233,15 @@ async def update_publisher(
 
 @router.get("/tiers")
 async def list_tiers(user: CurrentUser, db: DbSession) -> list[dict]:
-    """List all subscription tiers."""
+    """List all subscription tiers with their limits.
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Returns:
+        List of tier dicts (id, name, daily_query_limit).
+    """
     _require_admin(user)
 
     result = await db.execute(select(SubscriptionTier))
@@ -189,7 +264,22 @@ async def update_tier(
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
-    """Update a subscription tier's limits."""
+    """Update a subscription tier's daily query limit.
+
+    Auth: JWT required (admin only).
+    Rate limit: None.
+    Tier: ADMIN role required.
+
+    Args:
+        tier_id: UUID of the tier to update.
+        body: Dict with 'daily_query_limit' key (integer, -1 = unlimited).
+
+    Returns:
+        Confirmation dict with tier_id and new daily_query_limit.
+
+    Raises:
+        HTTPException: 400 if daily_query_limit missing, 404 if tier not found.
+    """
     _require_admin(user)
 
     if "daily_query_limit" not in body:

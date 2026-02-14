@@ -1,3 +1,12 @@
+/**
+ * RulingsPage.tsx — Saved Rulings with My Rulings and Community tabs.
+ *
+ * Fetches from GET /api/v1/rulings and /api/v1/rulings/public.
+ * Supports search/filter, privacy badges, confidence indicators,
+ * expandable verdict details with citations, and delete.
+ *
+ * Used by: /dashboard/rulings route
+ */
 "use client";
 
 import { useState } from "react";

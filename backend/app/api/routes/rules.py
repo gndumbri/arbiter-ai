@@ -83,7 +83,7 @@ async def upload_ruleset(
         ingest_ruleset.delay(
             file_path=str(tmp_path),
             ruleset_id=str(ruleset_id),
-            user_id="anonymous",  # TODO: get from auth
+            user_id="anonymous",  # TODO(kasey, 2026-02-14): get from auth
             session_id=str(session_id),
             game_name=game_name,
             source_type=source_type,
