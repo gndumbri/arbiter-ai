@@ -1046,43 +1046,45 @@ arbiter-ai/
 
 ### Phase 0: Project Setup (Day 1)
 
-- [ ] Scaffold monorepo: `backend/` (FastAPI + uv) + `frontend/` (Next.js) + `docker-compose.yml`
+- [x] Scaffold monorepo: `backend/` (FastAPI + uv) + `frontend/` (Next.js) + `docker-compose.yml`
 - [ ] PWA config: `next-pwa`, `manifest.json`, app icons, root layout `<meta>` tags
 - [ ] Stripe setup: product + price for PRO ($9.99/mo), webhook endpoint
-- [ ] Supabase project: Email + Google + GitHub auth providers
-- [ ] `.env.example` with all required variables
+- [ ] Auth setup (AWS Cognito or similar)
+- [x] `.env.example` with all required variables
 
 ### Phase 1: Foundation (Weeks 1–2)
 
-- [ ] Docker Compose: Postgres 16, Redis 7, ClamAV
-- [ ] Alembic migrations: all tables (`users`, `sessions`, `ruleset_metadata`, `publishers`, `official_rulesets`, `user_game_library`, `file_blocklist`, `query_audit_log`)
-- [ ] Auth middleware: Supabase JWT validation, user context injection
+- [x] Docker Compose: Postgres 16, Redis 7, ClamAV
+- [x] Alembic migrations: all tables (`users`, `sessions`, `ruleset_metadata`, `publishers`, `official_rulesets`, `user_game_library`, `file_blocklist`, `query_audit_log`)
+- [ ] Auth middleware: JWT validation, user context injection
 - [ ] User account endpoints: registration, login, profile, per-user data scoping
-- [ ] Stripe billing: checkout, portal, webhook handler (subscription lifecycle)
-- [ ] Config: `pydantic-settings` with `.env` support
+- [ ] Billing: checkout, portal, webhook handler (subscription lifecycle)
+- [x] Config: `pydantic-settings` with `.env` support
 
 ### Phase 2: Ingestion Pipeline (Weeks 2–3)
 
-- [ ] Pinecone Serverless index (`arbiter-rules`, 1536d, cosine)
-- [ ] **Layer 1:** Quarantine bucket, magic-byte validation, hash blocklist check, ClamAV scan
-- [ ] **Layer 1:** Sandboxed worker Dockerfile (no DB/network access)
-- [ ] **Layer 2:** OCR first 3 pages + GPT-4o-mini rulebook classification
-- [ ] **Layer 3:** Docling parser + Unstructured fallback
-- [ ] **Layer 3:** Recursive semantic chunker with header prepending
-- [ ] **Layer 3:** Embedding service (`text-embedding-3-small`, batching, retry)
-- [ ] **Layer 3:** Pinecone upsert + index verification + source file purge
-- [ ] Celery worker: full pipeline task with retry/DLQ
+- [x] Provider abstraction layer: 5 Protocol interfaces + singleton registry
+- [x] OpenAI LLM/Embeddings, Pinecone, Cohere Reranker, Docling Parser providers
+- [x] Pinecone Serverless index (`arbiter-rules`, 1536d, cosine)
+- [x] **Layer 1:** Magic-byte validation, size limit, hash blocklist check
+- [x] **Layer 2:** GPT-4o-mini rulebook classification (first 3 pages)
+- [x] **Layer 3:** Docling parser + PyMuPDF fallback
+- [x] **Layer 3:** Recursive semantic chunker with header prepending
+- [x] **Layer 3:** Embedding service (`text-embedding-3-small`, batching)
+- [x] **Layer 3:** Pinecone upsert + index verification + source file purge
+- [ ] Celery worker: full pipeline task with retry/DLQ (currently sync)
 - [ ] Test with: dual-column PDF, table-heavy PDF, **non-rulebook PDF (expect rejection)**
 
 ### Phase 3: Adjudication Engine (Weeks 3–4)
 
-- [ ] LLM-powered query expansion
-- [ ] Hybrid search: Dense (Pinecone) + Sparse (BM25) with RRF
-- [ ] **Dual-namespace retrieval:** merge official + user namespace results
-- [ ] Cross-encoder reranker (Cohere Rerank or `bge-reranker-v2-m3`)
-- [ ] Hierarchy re-sort with conflict detection
-- [ ] Judge system prompt with strict citation enforcement
-- [ ] Audit trail: log queries, verdicts, confidence, latency
+- [x] LLM-powered query expansion with sub-query decomposition
+- [x] Multi-namespace retrieval (fan-out across user + official namespaces)
+- [x] Cross-encoder reranker (Cohere Rerank v3)
+- [x] Hierarchy re-sort with conflict detection
+- [x] Judge system prompt with strict citation enforcement + chain-of-thought
+- [x] Audit trail: log queries, verdicts, confidence, latency
+- [x] Judge endpoint: `POST /api/v1/judge`
+- [x] Feedback endpoint: `POST /api/v1/judge/{query_id}/feedback`
 
 ### Phase 4: Frontend (Weeks 4–5)
 

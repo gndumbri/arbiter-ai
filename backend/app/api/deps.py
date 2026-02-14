@@ -76,3 +76,8 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[dict, Depends(get_current_user)]
+
+# ─── Convenience aliases used by routes ────────────────────────────────────────
+
+DbSession = DBSession
+GetSettings = ConfigDep
