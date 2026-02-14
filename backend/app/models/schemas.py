@@ -70,6 +70,7 @@ class JudgeQuery(BaseModel):
     session_id: uuid.UUID
     query: str = Field(..., min_length=1, max_length=500)
     game_name: str | None = None
+    ruleset_ids: list[uuid.UUID] | None = None
 
 
 class VerdictCitation(BaseModel):

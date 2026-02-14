@@ -52,8 +52,20 @@ def test_create_duplicate_publisher(client: TestClient, db_session: MagicMock):
     assert response.status_code == 409
 
 def test_create_official_ruleset(client: TestClient, db_session: MagicMock):
-    # Mock db.get(Publisher) -> returns publisher (async)
-    mock_pub = Publisher(id=uuid.uuid4(), name="Test Pub", slug="test-pub")
+    # WHY: Publisher routes now verify X-Publisher-Key header against
+    # a SHA-256 hash stored in the publisher record. The test must
+    # provide a valid key and matching hash.
+    import hashlib
+    test_key = "arb_test_key_123"
+    test_key_hash = hashlib.sha256(test_key.encode()).hexdigest()
+
+    # Mock db.get(Publisher) -> returns publisher with key hash (async)
+    mock_pub = Publisher(
+        id=uuid.uuid4(),
+        name="Test Pub",
+        slug="test-pub",
+        api_key_hash=test_key_hash,
+    )
     db_session.get = AsyncMock(return_value=mock_pub)
     
     # Mock db.execute(check_slug) -> returns None
@@ -79,6 +91,7 @@ def test_create_official_ruleset(client: TestClient, db_session: MagicMock):
             "version": "1.0",
             "pinecone_namespace": "test-game-ns",
         },
+        headers={"X-Publisher-Key": test_key},
     )
     assert response.status_code == 201
     data = response.json()

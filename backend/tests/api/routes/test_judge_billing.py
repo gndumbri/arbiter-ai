@@ -1,9 +1,20 @@
+"""Tests for judge billing/rate-limiting.
+
+Verifies that FREE-tier users hit a 429 when their daily query
+limit is reached, and PRO-tier users are not blocked.
+
+WHY these tests exist: The judge.py route implements tier-based
+rate limiting. These tests ensure the billing/rate-limit checks
+work correctly without needing a real database or Stripe.
+"""
+
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.api.deps import get_current_user
 from app.main import app
-from app.models.tables import Subscription, SubscriptionTier
+from app.models.tables import Session, Subscription, SubscriptionTier
 
 # Mock User
 mock_user = {
@@ -21,34 +32,40 @@ def override_user():
 def test_judge_billing_limit_reached(client, db_session, override_user):
     """Test that FREE tier user gets 429 when limit is reached."""
     
-    # Mock sequence of db.execute calls
-    # 1. Subscription query -> Return FREE subscription
-    # 2. Tier config query -> Return FREE tier with limit 5
-    # 3. Usage count query -> Return 5 (Limit Reached)
+    # Mock sequence of db.execute calls in judge.py:
+    # 1. Session query -> Return valid non-expired session
+    # 2. Namespace resolution query -> Return empty (uses fallback)
+    # 3. Subscription query -> Return FREE subscription
+    # 4. Tier config query -> Return FREE tier with limit 5
+    # 5. Usage count query -> Return 5 (Limit Reached)
     
+    # Result 1: Session exists and is not expired
+    mock_session = MagicMock(spec=Session)
+    mock_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=12)
+    res_session = MagicMock()
+    res_session.scalar_one_or_none.return_value = mock_session
+
+    # Result 2: Namespace resolution - no indexed rulesets (empty result)
+    res_namespaces = MagicMock()
+    res_namespaces.all.return_value = []
+
+    # Result 3: Subscription query
     mock_subscription = MagicMock(spec=Subscription)
     mock_subscription.plan_tier = "FREE"
+    res_sub = MagicMock()
+    res_sub.scalar_one_or_none.return_value = mock_subscription
     
+    # Result 4: Tier config query
     mock_tier = MagicMock(spec=SubscriptionTier)
     mock_tier.daily_query_limit = 5
+    res_tier = MagicMock()
+    res_tier.scalar_one_or_none.return_value = mock_tier
     
-    # We need to construct the AsyncMock side_effect carefully
-    # logic in judge.py:
-    # result = await db.execute(stmt) -> subscription
-    # tier_result = await db.execute(tier_stmt) -> tier_config
-    # usage_result = await db.execute(usage_stmt) -> usage_count
+    # Result 5: Usage count query
+    res_usage = MagicMock()
+    res_usage.scalar_one.return_value = 5  # Limit reached
     
-    # Mock Result objects
-    res1 = MagicMock()
-    res1.scalar_one_or_none.return_value = mock_subscription
-    
-    res2 = MagicMock()
-    res2.scalar_one_or_none.return_value = mock_tier
-    
-    res3 = MagicMock()
-    res3.scalar_one.return_value = 5  # Limit reached
-    
-    db_session.execute.side_effect = [res1, res2, res3]
+    db_session.execute.side_effect = [res_session, res_namespaces, res_sub, res_tier, res_usage]
     
     response = client.post(
         "/api/v1/judge",
@@ -65,24 +82,31 @@ def test_judge_billing_limit_reached(client, db_session, override_user):
 def test_judge_billing_pro_unlimited(client, db_session, override_user):
     """Test that PRO tier user (unlimited) does not get blocked."""
     
-    # 1. Subscription -> PRO
-    # 2. Tier Config -> Limit -1
-    # 3. No usage check query needed! (Logic skips if limit == -1)
-    
+    # 1. Session query -> valid session
+    # 2. Namespace resolution -> empty
+    # 3. Subscription -> PRO
+    # 4. Tier Config -> Limit -1 (unlimited)
+    # No usage check! (Logic skips if limit == -1)
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    res_session = MagicMock()
+    res_session.scalar_one_or_none.return_value = mock_session
+
+    res_namespaces = MagicMock()
+    res_namespaces.all.return_value = []
+
     mock_subscription = MagicMock(spec=Subscription)
     mock_subscription.plan_tier = "PRO"
+    res_sub = MagicMock()
+    res_sub.scalar_one_or_none.return_value = mock_subscription
     
     mock_tier = MagicMock(spec=SubscriptionTier)
     mock_tier.daily_query_limit = -1
+    res_tier = MagicMock()
+    res_tier.scalar_one_or_none.return_value = mock_tier
     
-    res1 = MagicMock()
-    res1.scalar_one_or_none.return_value = mock_subscription
-    
-    res2 = MagicMock()
-    res2.scalar_one_or_none.return_value = mock_tier
-    
-    # Only 2 executes expected
-    db_session.execute.side_effect = [res1, res2]
+    db_session.execute.side_effect = [res_session, res_namespaces, res_sub, res_tier]
 
     # Mock Engine (since we pass billing check, it tries to run engine)
     # It will fail with 500 due to missing Pinecone/LLM keys, which is EXPECTED.
@@ -98,4 +122,4 @@ def test_judge_billing_pro_unlimited(client, db_session, override_user):
     )
 
     assert response.status_code != 429
-    assert response.status_code == 500 # Adjudication failed
+    assert response.status_code == 500  # Adjudication failed (no LLM keys)

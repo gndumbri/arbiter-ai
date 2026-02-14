@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_jwt_secret: str = ""
 
+    # NextAuth
+    nextauth_secret: str = ""  # Used to verify NextAuth JWT signatures
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
