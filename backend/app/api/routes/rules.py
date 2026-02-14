@@ -109,7 +109,7 @@ async def upload_ruleset(
         )
         logger.exception("Task dispatch failed", ruleset_id=str(ruleset_id))
         raise HTTPException(status_code=500, detail="Failed to queue processing task") from exc
-    
+
     # Note: We do NOT clean up tmp_dir here eagerly, because the worker needs it.
     # The worker is responsible for cleanup after processing.
 
@@ -151,7 +151,7 @@ async def list_rulesets(
         .offset(skip)
         .limit(limit)
     )
-    
+
     rulesets = result.scalars().all()
     return [
         {

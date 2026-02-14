@@ -11,11 +11,13 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    PrimaryKeyConstraint,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -31,13 +33,10 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    name: Mapped[str | None] = mapped_column(String)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    tier: Mapped[str] = mapped_column(String, nullable=False, default="FREE")
-    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    tier_updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    email_verified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    image: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -45,13 +44,82 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Legacy/Existing fields (could migrate to Subscription table, but keeping for now if used by existing code)
+    # tier: Mapped[str] = mapped_column(String, nullable=False, default="FREE")
+    # stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Relationships
+    accounts: Mapped[list[Account]] = relationship(back_populates="user", cascade="all, delete")
+    auth_sessions: Mapped[list[AuthSession]] = relationship(back_populates="user", cascade="all, delete")
+    # Game Sessions (renamed relationship for clarity?)
     sessions: Mapped[list[Session]] = relationship(back_populates="user", cascade="all, delete")
+
+    subscription: Mapped[Subscription] = relationship(back_populates="user", uselist=False, cascade="all, delete")
+    saved_rulings: Mapped[list[SavedRuling]] = relationship(back_populates="user", cascade="all, delete")
+    party_memberships: Mapped[list[PartyMember]] = relationship(back_populates="user", cascade="all, delete")
     library: Mapped[list[UserGameLibrary]] = relationship(
         back_populates="user", cascade="all, delete"
     )
 
 
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    provider_account_id: Mapped[str] = mapped_column(String, nullable=False)
+    refresh_token: Mapped[str | None] = mapped_column(Text)
+    access_token: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[int | None] = mapped_column(Integer)
+    token_type: Mapped[str | None] = mapped_column(String)
+    scope: Mapped[str | None] = mapped_column(String)
+    id_token: Mapped[str | None] = mapped_column(Text)
+    session_state: Mapped[str | None] = mapped_column(String)
+
+    user: Mapped[User] = relationship(back_populates="accounts")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_account_id", name="uq_account_provider"),
+    )
+
+
+class AuthSession(Base):
+    """NextAuth Session Table"""
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    expires: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="auth_sessions")
+
+
+class VerificationToken(Base):
+    __tablename__ = "verification_tokens"
+
+    identifier: Mapped[str] = mapped_column(String, nullable=False)
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    expires: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("identifier", "token"),
+    )
+
+
 class Session(Base):
+    """Game/Chat Session (Existing)"""
     __tablename__ = "sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -158,6 +226,82 @@ class OfficialRuleset(Base):
     )
 
     publisher: Mapped[Publisher] = relationship(back_populates="official_rulesets")
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    stripe_customer_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String, unique=True)
+    plan_tier: Mapped[str] = mapped_column(String, default="FREE")  # FREE, PRO
+    status: Mapped[str] = mapped_column(String, default="active")
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="subscription")
+
+
+class Party(Base):
+    __tablename__ = "parties"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    members: Mapped[list[PartyMember]] = relationship(back_populates="party", cascade="all, delete")
+
+
+class PartyMember(Base):
+    __tablename__ = "party_members"
+
+    party_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("parties.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role: Mapped[str] = mapped_column(String, default="MEMBER")  # OWNER, ADMIN, MEMBER
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    party: Mapped[Party] = relationship(back_populates="members")
+    user: Mapped[User] = relationship(back_populates="party_memberships")
+
+
+class SavedRuling(Base):
+    __tablename__ = "saved_rulings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    verdict_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    privacy_level: Mapped[str] = mapped_column(String, default="PRIVATE")  # PRIVATE, PARTY, PUBLIC
+    tags: Mapped[list[str] | None] = mapped_column(JSON) # e.g., ["combat", "magic"]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="saved_rulings")
 
 
 class UserGameLibrary(Base):

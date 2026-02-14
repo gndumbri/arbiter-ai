@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { SessionProvider } from "@/components/providers/SessionProvider";
 import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
@@ -24,10 +24,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <AuthProvider>
+        <SessionProvider>
           {children}
           <Toaster />
-        </AuthProvider>
+        </SessionProvider>
       </body>
     </html>
   );
