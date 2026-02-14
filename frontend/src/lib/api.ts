@@ -41,10 +41,10 @@ export async function fetcher<T>(url: string, options?: RequestInit): Promise<T>
 }
 
 export const api = {
-  createSession: async (gameName: string) => {
+  createSession: async (data: { game_name: string; persona?: string; system_prompt_override?: string }) => {
     return fetcher<{ id: string; game_name: string }>("/sessions", {
       method: "POST",
-      body: JSON.stringify({ game_name: gameName }),
+      body: JSON.stringify(data),
     });
   },
 
@@ -76,6 +76,19 @@ export const api = {
     return fetcher<{ status: string; chunk_count?: number; message?: string }>(
       `/rulesets/${rulesetId}/status`
     );
+  },
+
+  listAgents: async () => {
+    const res = await fetch(`${API_BASE_URL}/sessions?persona_only=true`);
+    if (!res.ok) throw new Error("Failed to fetch agents");
+    return res.json() as Promise<Array<{
+      id: string;
+      game_name: string;
+      persona: string | null;
+      system_prompt_override: string | null;
+      created_at: string;
+      active_ruleset_ids: string[] | null;
+    }>>;
   },
 
   submitQuery: async (data: { session_id: string; query: string; ruleset_ids?: string[] }) => {
