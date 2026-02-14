@@ -968,21 +968,30 @@ arbiter-ai/
 │   │   │   │   ├── sessions.py
 │   │   │   │   ├── rules.py
 │   │   │   │   ├── judge.py
-│   │   │   │   ├── library.py      # User game library CRUD
 │   │   │   │   ├── catalog.py      # Official ruleset browsing
-│   │   │   │   ├── publisher.py    # Publisher API (API-key auth)
-│   │   │   │   ├── billing.py      # Stripe checkout + portal
-│   │   │   │   └── webhooks.py     # Stripe webhooks
+│   │   │   │   ├── publishers.py   # Publisher API (API-key auth)
+│   │   │   │   ├── admin.py        # Admin portal (RBAC)
+│   │   │   │   ├── rulings.py      # Saved rulings CRUD
+│   │   │   │   ├── parties.py      # Party management
+│   │   │   │   └── billing.py      # Stripe checkout + tiers
 │   │   │   ├── deps.py         # Dependency injection (DB, Pinecone, Redis)
-│   │   │   └── middleware.py   # Auth, rate limiting, CORS, error handling
+│   │   │   ├── rate_limit.py   # Redis-backed rate limiter
+│   │   │   └── middleware.py   # RequestID, Logging, Error handling
 │   │   ├── core/
 │   │   │   ├── ingestion.py    # 3-layer ingestion pipeline
-│   │   │   ├── relevance.py    # LLM-based rulebook classification (Layer 2)
-│   │   │   ├── embedder.py     # Embedding service
-│   │   │   ├── retriever.py    # IRetriever + PineconeRetriever (dual namespace)
-│   │   │   ├── reranker.py     # Cross-encoder reranking + hierarchy sort
-│   │   │   ├── judge.py        # LLM verdict generation
-│   │   │   └── security.py     # File validation, ClamAV, hash blocklist
+│   │   │   ├── adjudication.py # Adjudication engine orchestrator
+│   │   │   ├── chunking.py     # Recursive semantic splitter
+│   │   │   ├── protocols.py    # Provider Protocol interfaces
+│   │   │   └── providers/
+│   │   │       ├── registry.py          # Singleton provider factory
+│   │   │       ├── openai_llm.py        # OpenAI GPT-4o provider
+│   │   │       ├── openai_embeddings.py # OpenAI embeddings
+│   │   │       ├── bedrock_llm.py       # AWS Bedrock Claude provider
+│   │   │       ├── bedrock_embedding.py # AWS Bedrock Titan v2
+│   │   │       ├── pinecone_store.py    # Pinecone vector store
+│   │   │       ├── cohere_reranker.py   # Cohere Rerank v3
+│   │   │       ├── flashrank_reranker.py # FlashRank local reranker
+│   │   │       └── docling_parser.py    # Docling PDF parser
 │   │   ├── models/             # SQLAlchemy / Pydantic models
 │   │   ├── db/                 # Database session, queries
 │   │   └── workers/
@@ -1088,27 +1097,58 @@ arbiter-ai/
 
 ### Phase 4: Frontend (Weeks 4–5)
 
-- [ ] PWA shell: manifest, service worker, offline page, install prompt
-- [ ] Auth pages: login, signup, password reset
-- [ ] Landing page: hero section, value proposition, CTA
-- [ ] **Game Library (dashboard):** user's saved games, favorites, recent queries
-- [ ] **Official Catalog:** browse + search publisher-managed rulesets, add to library
-- [ ] File upload: drag-and-drop PDF, progress indicator, status polling
-- [ ] Chat interface: message thread with streaming responses
-- [ ] Citation viewer: expandable cards with page, section, snippet
-- [ ] Confidence badge (green/yellow/red) + conflict alert
-- [ ] Billing page: upgrade CTA, Stripe Customer Portal link
-- [ ] Account page: profile, tier status, usage stats
+- [x] PWA shell: manifest, service worker, offline page, install prompt
+- [x] Auth pages: login, signup (passwordless magic links via NextAuth)
+- [x] Landing page: hero section, value proposition, CTA
+- [x] **Game Library (dashboard):** user's saved games, favorites, recent queries
+- [x] **Official Catalog:** browse + search publisher-managed rulesets, add to library
+- [x] File upload: drag-and-drop PDF, progress indicator, status polling
+- [x] Chat interface: message thread with streaming responses
+- [x] Citation viewer: expandable cards with page, section, snippet
+- [x] Confidence badge (green/yellow/red) + conflict alert
+- [x] Billing page: upgrade CTA, Stripe Customer Portal link
+- [x] Account page: profile, tier status, usage stats
 
 ### Phase 5: Publisher Portal & Hardening (Weeks 5–6)
 
-- [ ] Publisher API: upload, list, update, delete official rulesets
-- [ ] Publisher onboarding flow (admin-side)
-- [ ] Rate limiting: Redis sliding window (10/min FREE, 60/min PRO)
-- [ ] Input sanitization, HTTPS enforcement, CORS config
-- [ ] Prometheus metrics, structured logging, health check
-- [ ] Consistent error responses, Celery DLQ
-- [ ] Legal: Terms of Service (user warranty), DMCA procedure, privacy policy
+- [x] Publisher API: upload, list, update, delete official rulesets
+- [x] Publisher onboarding flow (admin-side)
+- [x] Rate limiting: Redis sliding window (daily query limits per tier)
+- [x] Input sanitization, HTTPS enforcement, CORS config
+- [x] Prometheus metrics, structured logging, health check
+- [x] Consistent error responses, Celery DLQ
+- [x] Legal: Terms of Service (user warranty), DMCA procedure, privacy policy
+
+### Phase 6: User Accounts, Billing & Social
+
+- [x] Authentication: Passwordless email login (NextAuth + Brevo magic links)
+- [x] Communication layer: Modular email/SMS service (Brevo provider)
+- [x] Dev auto-login for local development
+- [x] Rate limiting: Redis-backed, per-user daily limits (`rate_limit.py`)
+- [x] Admin portal: stats, user/publisher/tier management with RBAC (`admin.py`)
+- [x] Saved rulings: pin/save verdicts with privacy controls (`rulings.py`)
+- [x] Party management: create/join/leave groups (`parties.py`)
+- [x] Billing routes: tier listing, subscription status, Stripe stubs (`billing.py`)
+- [x] Configurable billing: database-backed `subscription_tiers` table
+- [x] Frontend: Admin, Rulings, Parties dashboard pages
+- [x] Alembic migration: `role` column on `users` table
+
+### Phase 7: Agent Builder & Embeddable Widget
+
+- [x] Agent Builder backend: session-based agents with persona + system_prompt
+- [x] Agent Builder API: CRUD endpoints for agent management
+- [x] Agent Builder frontend: 3-step wizard (Identity → Knowledge → Behavior)
+- [x] Embeddable Widget: standalone chat UI with `<script>` tag loader
+- [x] Widget API: public endpoint `/widget/{id}` for external embedding
+
+### Phase 8: AWS Migration (Bedrock + FlashRank)
+
+- [x] Dependencies: boto3, flashrank added to pyproject.toml
+- [x] Config: AWS env vars and provider selection options
+- [x] Provider: Bedrock LLM (Claude 3.5 Sonnet via `bedrock_llm.py`)
+- [x] Provider: Bedrock Embeddings (Titan v2 via `bedrock_embedding.py`)
+- [x] Provider: FlashRank Reranker (local Python via `flashrank_reranker.py`)
+- [x] Registry: all new providers registered and wirable via env var
 
 ---
 

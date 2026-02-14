@@ -25,6 +25,7 @@ dependencies = [
     "flashrank>=0.2.0",
     "email-validator>=2.0.0",
     "pyjwt>=2.11.0",
+    "stripe>=14.3.0",
 ]
 
 [project.optional-dependencies]

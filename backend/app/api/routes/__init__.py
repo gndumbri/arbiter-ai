@@ -1,3 +1,29 @@
-from . import admin, billing, catalog, health, judge, parties, publishers, rules, rulings, sessions
+from . import (
+    admin,
+    billing,
+    catalog,
+    health,
+    judge,
+    library,
+    parties,
+    publishers,
+    rules,
+    rulings,
+    sessions,
+    users,
+)
 
-__all__ = ["admin", "billing", "catalog", "health", "judge", "parties", "publishers", "rulings", "rules", "sessions"]
+__all__ = [
+    "admin",
+    "billing",
+    "catalog",
+    "health",
+    "judge",
+    "library",
+    "parties",
+    "publishers",
+    "rules",
+    "rulings",
+    "sessions",
+    "users",
+]
