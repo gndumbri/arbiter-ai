@@ -1,0 +1,17 @@
+# Arbiter AI — Backend
+
+*.pyc
+__pycache__/
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
