@@ -68,10 +68,20 @@ async def get_current_user(
 
     # TODO: Replace with actual Supabase JWT validation
     # For now, return a stub user for development
+    # Try to decode email from token (assuming unencrypted JWT for dev)
+    import jwt
+    try:
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, options={"verify_signature": False})
+        email = payload.get("email", "dev@arbiter.local")
+    except Exception:
+        email = "dev@arbiter.local"
+
     return {
         "id": uuid.uuid4(),
-        "email": "dev@arbiter.local",
+        "email": email,
         "tier": "PRO",
+        "role": "ADMIN",  # Dev stub — all dev users are admins
     }
 
 

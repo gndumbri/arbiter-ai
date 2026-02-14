@@ -92,6 +92,39 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
     }
   };
 
+  const handleFollowUp = (question: string) => {
+    setInput(question);
+    // Auto-submit follow-up
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: question,
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setIsLoading(true);
+    api.submitQuery({ session_id: sessionId, query: question })
+      .then((response) => {
+        const aiMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: response.verdict,
+          verdict: response,
+        };
+        setMessages(prev => [...prev, aiMsg]);
+      })
+      .catch(() => {
+        toast({
+          title: "Error",
+          description: "Failed to get a verdict. Please try again.",
+          variant: "destructive",
+        });
+      })
+      .finally(() => {
+        setIsLoading(false);
+        setInput("");
+      });
+  };
+
   return (
     <div className="flex h-screen flex-col bg-background/50">
       <header className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
@@ -111,6 +144,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
                   key={msg.id}
                   message={msg}
                   onCitationClick={setSelectedCitation}
+                  onFollowUp={handleFollowUp}
                 />
               ))}
               {isLoading && (
