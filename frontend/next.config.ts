@@ -8,6 +8,7 @@ const withPWA = require("@ducanh2912/next-pwa").default({
 });
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   reactStrictMode: true,
   // Ensure images from Google/etc are allowed if using Auth avatars
   images: {
