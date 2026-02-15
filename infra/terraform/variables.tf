@@ -80,3 +80,41 @@ variable "github_repo" {
   type        = string
   default     = "gndumbri/arbiter-ai"
 }
+
+# --- RDS ---
+
+variable "db_instance_class" {
+  description = "RDS instance class (db.t4g.micro is free-tier eligible)"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "Allocated storage in GB (20 GB is free-tier eligible)"
+  type        = number
+  default     = 20
+}
+
+variable "db_max_allocated_storage" {
+  description = "Max storage for autoscaling in GB (0 disables autoscaling)"
+  type        = number
+  default     = 0
+}
+
+variable "db_name" {
+  description = "Name of the PostgreSQL database"
+  type        = string
+  default     = "arbiter"
+}
+
+variable "db_username" {
+  description = "Master username for the RDS instance"
+  type        = string
+  default     = "arbiter"
+}
+
+variable "db_password" {
+  description = "Master password for the RDS instance"
+  type        = string
+  sensitive   = true
+}
