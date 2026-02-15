@@ -168,13 +168,64 @@ async def submit_query(
     # Deduplicate while preserving order.
     namespaces = list(dict.fromkeys(namespaces))
 
+    # Fallback: auto-bind a READY official BASE ruleset by exact game-name match
+    # when the session wasn't explicitly linked at creation time.
+    if not namespaces and session_game_name and not body.ruleset_ids:
+        normalized_game_name = session_game_name.strip().lower()
+        fallback_stmt = (
+            select(OfficialRuleset.id)
+            .where(
+                func.lower(OfficialRuleset.game_name) == normalized_game_name,
+                OfficialRuleset.source_type == "BASE",
+                OfficialRuleset.status.in_(READY_CATALOG_STATUSES),
+                OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+            )
+            .limit(1)
+        )
+        fallback_result = await db.execute(fallback_stmt)
+        fallback_namespaces = [str(row[0]) for row in fallback_result.all()]
+        if fallback_namespaces:
+            namespaces.extend(fallback_namespaces)
+            logger.info(
+                "judge_auto_bound_official_ruleset",
+                session_id=str(body.session_id),
+                game_name=session_game_name,
+                ruleset_ids=fallback_namespaces,
+            )
+
+    namespaces = list(dict.fromkeys(namespaces))
+
     if not namespaces:
+        processing_count = 0
+        if body.session_id:
+            processing_stmt = (
+                select(func.count(RulesetMetadata.id))
+                .where(
+                    RulesetMetadata.session_id == body.session_id,
+                    RulesetMetadata.status == "PROCESSING",
+                )
+            )
+            processing_result = await db.execute(processing_stmt)
+            processing_count = processing_result.scalar_one() or 0
+
+        detail = (
+            "No indexed rulesets available for this session. "
+            "Upload and finish indexing a ruleset first."
+        )
+        if processing_count > 0:
+            detail = (
+                "Rules are still indexing for this session. "
+                "Wait for status READY/INDEXED, then ask again."
+            )
+        elif session_game_name:
+            detail = (
+                f"No ready rules found for '{session_game_name}'. "
+                "Upload a rulebook or choose a READY Armory title."
+            )
+
         raise HTTPException(
             status_code=409,
-            detail=(
-                "No indexed rulesets available for this session. "
-                "Upload and finish indexing a ruleset first."
-            ),
+            detail=detail,
         )
 
     # ── 3. Resolve tier and check daily query limits ──────────────────────

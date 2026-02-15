@@ -23,6 +23,7 @@ import time
 
 import redis.asyncio as aioredis
 from fastapi import HTTPException
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,19 @@ class AbuseDetector:
             True if the identifier is currently blocked.
         """
         key = f"abuse:block:{identifier}:{category}"
-        return await self._redis.exists(key) > 0
+        try:
+            return await self._redis.exists(key) > 0
+        except RedisError as exc:
+            logger.warning(
+                "abuse_detector_backend_unavailable; allowing request",
+                extra={
+                    "identifier": identifier,
+                    "category": category,
+                    "error": str(exc),
+                },
+            )
+            # Fail-open to preserve API availability when Redis is degraded.
+            return False
 
     async def record_and_check(
         self,
@@ -120,58 +133,72 @@ class AbuseDetector:
         if threshold is None:
             return
 
-        # Check existing block first
-        block_key = f"abuse:block:{identifier}:{category}"
-        block_ttl = await self._redis.ttl(block_key)
-        if block_ttl > 0:
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "code": "ABUSE_BLOCKED",
-                    "message": threshold.message,
-                    "retry_after_seconds": block_ttl,
-                },
-            )
+        try:
+            # Check existing block first
+            block_key = f"abuse:block:{identifier}:{category}"
+            block_ttl = await self._redis.ttl(block_key)
+            if block_ttl > 0:
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "ABUSE_BLOCKED",
+                        "message": threshold.message,
+                        "retry_after_seconds": block_ttl,
+                    },
+                )
 
-        # Record event in sliding window (sorted set with timestamp scores)
-        events_key = f"abuse:events:{identifier}:{category}"
-        now = time.time()
-        window_start = now - threshold.window_seconds
+            # Record event in sliding window (sorted set with timestamp scores)
+            events_key = f"abuse:events:{identifier}:{category}"
+            now = time.time()
+            window_start = now - threshold.window_seconds
 
-        # WHY: Pipeline for atomicity — add event + prune old + count + set TTL
-        pipe = self._redis.pipeline()
-        pipe.zadd(events_key, {f"{now}": now})  # Add current event
-        pipe.zremrangebyscore(events_key, 0, window_start)  # Prune expired
-        pipe.zcard(events_key)  # Count events in window
-        pipe.expire(events_key, threshold.window_seconds * 2)  # Cleanup TTL
-        results = await pipe.execute()
+            # WHY: Pipeline for atomicity — add event + prune old + count + set TTL
+            pipe = self._redis.pipeline()
+            pipe.zadd(events_key, {f"{now}": now})  # Add current event
+            pipe.zremrangebyscore(events_key, 0, window_start)  # Prune expired
+            pipe.zcard(events_key)  # Count events in window
+            pipe.expire(events_key, threshold.window_seconds * 2)  # Cleanup TTL
+            results = await pipe.execute()
 
-        event_count = results[2]
+            event_count = results[2]
 
-        if event_count > threshold.max_events:
-            # Block the identifier
-            await self._redis.setex(block_key, threshold.block_seconds, "1")
-            # Clear the events set since we've already blocked
-            await self._redis.delete(events_key)
+            if event_count > threshold.max_events:
+                # Block the identifier
+                await self._redis.setex(block_key, threshold.block_seconds, "1")
+                # Clear the events set since we've already blocked
+                await self._redis.delete(events_key)
 
+                logger.warning(
+                    "Abuse detected — blocking",
+                    extra={
+                        "identifier": identifier,
+                        "category": category,
+                        "event_count": event_count,
+                        "block_seconds": threshold.block_seconds,
+                    },
+                )
+
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        "code": "ABUSE_BLOCKED",
+                        "message": threshold.message,
+                        "retry_after_seconds": threshold.block_seconds,
+                    },
+                )
+        except HTTPException:
+            raise
+        except RedisError as exc:
             logger.warning(
-                "Abuse detected — blocking",
+                "abuse_detector_backend_unavailable; allowing request",
                 extra={
                     "identifier": identifier,
                     "category": category,
-                    "event_count": event_count,
-                    "block_seconds": threshold.block_seconds,
+                    "error": str(exc),
                 },
             )
-
-            raise HTTPException(
-                status_code=429,
-                detail={
-                    "code": "ABUSE_BLOCKED",
-                    "message": threshold.message,
-                    "retry_after_seconds": threshold.block_seconds,
-                },
-            )
+            # Fail-open to avoid taking down core flows (uploads/judge) when Redis degrades.
+            return
 
     async def check_upload_velocity(self, user_id: str) -> None:
         """Convenience wrapper for upload velocity checks."""

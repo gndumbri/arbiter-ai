@@ -50,6 +50,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Agent quality flow now applies persona + custom system instructions directly in adjudication while preserving non-overridable safety/grounding constraints.
 - Judge flow now includes recent-turn conversation context for higher-quality follow-up rulings (without relaxing citation grounding rules).
 - Agent/session creation now stays available during Redis rate-limiter outages (degraded fail-open behavior with warnings), reducing false-create failures.
+- Upload abuse checks now also fail open when Redis is unavailable, so ruleset uploads do not hard-fail in sandbox/degraded infrastructure.
 - Frontend now surfaces backend error messages cleanly (including structured rate-limit payloads) during agent creation.
 - Account deletion UX now includes a multi-step, on-brand danger flow with escalating warnings and typed confirmation before irreversible deletion.
 - Backend CORS ordering was corrected so browser clients receive CORS headers even on middleware short-circuit responses (rate-limit/auth/errors), fixing agent/session create calls that appeared as CORS failures.
@@ -65,6 +66,10 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Open-license rules ingestion now supports multi-document Open5e sync (CC/OGL/ORC), including scheduled production refresh via Celery Beat.
 - New maintenance commands were added for deterministic sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
 - Backend deployment readiness now includes explicit preflight gates (`backend/scripts/preflight.py`, `make preflight-sandbox`, `make preflight-production`) that verify env configuration plus DB/Redis/provider health before promotion.
+- Deployment automation now includes a required CI preflight stage (`.github/workflows/deploy.yml`) so ECS service updates are blocked on failed readiness checks.
+- Frontend auth/email flow now degrades gracefully in sandbox (console fallback when Brevo is missing or transiently failing) while keeping production strict for delivery quality.
+- Ask flow now auto-links exact-name READY official rulesets when sessions were created without explicit linkage, and surfaces actionable indexing guidance instead of opaque judge failures.
+- Shelf-to-Ask flow now starts from library entries directly, reusing indexed game sessions or creating official rules-linked sessions so game selection and adjudication context stay aligned.
 - Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
 - Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
 - Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.

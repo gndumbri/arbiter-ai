@@ -112,10 +112,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       };
 
       setMessages(prev => [...prev, aiMsg]);
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to get a verdict. Please try again.";
       toast({
-        title: "The Arbiter Fumbled!",
-        description: "Failed to get a verdict. Roll again (try again).",
+        title: "The Arbiter Hit a Snag",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -151,10 +152,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
         };
         setMessages(prev => [...prev, aiMsg]);
       })
-      .catch(() => {
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : "Failed to get a verdict. Please try again.";
         toast({
-          title: "The Arbiter Fumbled!",
-          description: "Failed to get a verdict. Roll again (try again).",
+          title: "The Arbiter Hit a Snag",
+          description: message,
           variant: "destructive",
         });
       })

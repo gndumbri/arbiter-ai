@@ -155,6 +155,8 @@ export interface LibraryEntry {
   game_slug: string;
   added_from_catalog: boolean;
   official_ruleset_id: string | null;
+  official_ruleset_ids: string[] | null;
+  personal_ruleset_ids: string[] | null;
   is_favorite: boolean;
   favorite: boolean;
   last_queried: string | null;
@@ -352,6 +354,12 @@ export const api = {
 
   removeFromLibrary: async (id: string) => {
     return fetcher<void>(`/library/${id}`, { method: "DELETE" });
+  },
+
+  startSessionFromLibrary: async (id: string) => {
+    return fetcher<SessionSummary>(`/library/${id}/sessions`, {
+      method: "POST",
+    });
   },
 
   toggleFavorite: async (id: string) => {

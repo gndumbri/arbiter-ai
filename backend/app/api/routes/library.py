@@ -27,17 +27,26 @@ from __future__ import annotations
 import contextlib
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
-from app.models.tables import UserGameLibrary
+from app.api.rate_limit import RateLimitDep
+from app.models.schemas import SessionRead
+from app.models.tables import (
+    OfficialRuleset,
+    Publisher,
+    RulesetMetadata,
+    Session,
+    UserGameLibrary,
+)
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
 logger = logging.getLogger(__name__)
+READY_CATALOG_STATUSES = ("READY", "INDEXED", "COMPLETE", "PUBLISHED")
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -78,6 +87,8 @@ class LibraryEntryResponse(BaseModel):
     game_slug: str  # Derived from game_name for frontend compat
     added_from_catalog: bool
     official_ruleset_id: str | None  # First from the array, for compat
+    official_ruleset_ids: list[str] | None = None
+    personal_ruleset_ids: list[str] | None = None
     is_favorite: bool
     favorite: bool  # Alias for frontend compat
     last_queried: str | None
@@ -101,6 +112,8 @@ def _serialize_entry(entry: UserGameLibrary) -> LibraryEntryResponse:
         game_slug=_to_slug(entry.game_name),
         added_from_catalog=first_ruleset is not None,
         official_ruleset_id=first_ruleset,
+        official_ruleset_ids=[str(rid) for rid in (entry.official_ruleset_ids or [])] or None,
+        personal_ruleset_ids=[str(rid) for rid in (entry.personal_ruleset_ids or [])] or None,
         is_favorite=entry.is_favorite or False,
         favorite=entry.is_favorite or False,
         last_queried=entry.last_queried.isoformat() if entry.last_queried else None,
@@ -266,3 +279,129 @@ async def remove_from_library(entry_id: str, user: CurrentUser, db: DbSession) -
     await db.commit()
     logger.info("Library entry deleted: user=%s entry=%s", user["id"], entry_id)
 
+
+@router.post("/{entry_id}/sessions", response_model=SessionRead)
+async def start_session_from_library(
+    entry_id: str,
+    user: CurrentUser,
+    db: DbSession,
+    limiter: RateLimitDep,
+) -> SessionRead:
+    """Start Ask flow from a shelf entry, always binding to game rules when possible.
+
+    Behavior:
+        1) Reuse the latest non-expired session for this game that already has indexed uploads.
+        2) Reuse an existing non-expired session with matching official active_ruleset_ids.
+        3) Otherwise create a fresh session linked to valid READY official rulesets.
+        4) If no valid rules are linked at all, return 409 with an actionable message.
+    """
+    try:
+        entry_uuid = uuid.UUID(entry_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid library entry id.") from exc
+
+    entry_result = await db.execute(
+        select(UserGameLibrary).where(
+            UserGameLibrary.id == entry_uuid,
+            UserGameLibrary.user_id == user["id"],
+        )
+    )
+    entry = entry_result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Library entry not found.")
+
+    now = datetime.now(UTC)
+
+    # Prefer continuity: if this game already has an active indexed-upload session, reuse it.
+    indexed_stmt = (
+        select(Session)
+        .join(RulesetMetadata, RulesetMetadata.session_id == Session.id)
+        .where(
+            Session.user_id == user["id"],
+            Session.game_name == entry.game_name,
+            Session.expires_at > now,
+            RulesetMetadata.user_id == user["id"],
+            RulesetMetadata.status == "INDEXED",
+        )
+        .order_by(Session.created_at.desc())
+        .limit(1)
+    )
+    indexed_result = await db.execute(indexed_stmt)
+    indexed_session = indexed_result.scalars().first()
+    if indexed_session:
+        entry.last_queried = now
+        await db.commit()
+        return SessionRead.model_validate(indexed_session)
+
+    # Validate official rulesets linked in shelf entry.
+    requested_official_ids = list(dict.fromkeys(entry.official_ruleset_ids or []))
+    valid_official_ids: list[uuid.UUID] = []
+    if requested_official_ids:
+        valid_stmt = (
+            select(OfficialRuleset.id)
+            .where(
+                OfficialRuleset.id.in_(requested_official_ids),
+                OfficialRuleset.status.in_(READY_CATALOG_STATUSES),
+                OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+            )
+        )
+        valid_result = await db.execute(valid_stmt)
+        valid_official_ids = [row[0] for row in valid_result.all()]
+
+    # Reuse existing active session for this game if it already includes these official rulesets.
+    if valid_official_ids:
+        candidates_result = await db.execute(
+            select(Session)
+            .where(
+                Session.user_id == user["id"],
+                Session.game_name == entry.game_name,
+                Session.expires_at > now,
+            )
+            .order_by(Session.created_at.desc())
+            .limit(20)
+        )
+        required = set(valid_official_ids)
+        for candidate in candidates_result.scalars().all():
+            active_set = set(candidate.active_ruleset_ids or [])
+            if required.issubset(active_set):
+                entry.last_queried = now
+                await db.commit()
+                return SessionRead.model_validate(candidate)
+
+    if not valid_official_ids:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No ready rules are linked to this shelf game yet. "
+                "Upload and finish indexing a ruleset, or add a READY Armory title."
+            ),
+        )
+
+    await limiter.check_and_increment(
+        user_id=str(user["id"]),
+        tier=user["tier"],
+        category="session",
+    )
+
+    duration_hours = 24 if user["tier"] == "FREE" else 24 * 30
+    new_session = Session(
+        id=uuid.uuid4(),
+        user_id=user["id"],
+        game_name=entry.game_name,
+        expires_at=now + timedelta(hours=duration_hours),
+        active_ruleset_ids=valid_official_ids,
+    )
+    db.add(new_session)
+    entry.last_queried = now
+    await db.flush()
+    await db.refresh(new_session)
+    await db.commit()
+
+    logger.info(
+        "library_session_created",
+        user_id=str(user["id"]),
+        entry_id=str(entry.id),
+        session_id=str(new_session.id),
+        game_name=entry.game_name,
+    )
+    return SessionRead.model_validate(new_session)

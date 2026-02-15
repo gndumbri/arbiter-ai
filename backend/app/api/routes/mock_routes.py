@@ -22,7 +22,7 @@ import copy
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -101,6 +101,7 @@ class MockSessionCreate(BaseModel):
     game_name: str
     persona: str | None = None
     system_prompt_override: str | None = None
+    active_ruleset_ids: list[str] | None = None
 
 
 class MockJudgeQuery(BaseModel):
@@ -460,6 +461,7 @@ async def mock_add_to_library(body: MockLibraryAddGame):
     entry = create_mock_library_entry(body.game_name, body.game_slug)
     if body.official_ruleset_id:
         entry["official_ruleset_id"] = body.official_ruleset_id
+        entry["official_ruleset_ids"] = [body.official_ruleset_id]
         entry["added_from_catalog"] = True
 
     MOCK_LIBRARY_STATE.insert(0, entry)
@@ -503,6 +505,38 @@ async def mock_toggle_favorite(entry_id: str):
             logger.info("Mock: PATCH /library/%s/favorite → toggled", entry_id)
             return {"id": entry_id, "favorite": next_value}
     raise HTTPException(status_code=404, detail="Library entry not found.")
+
+
+@api_router.post("/library/{entry_id}/sessions", status_code=200, tags=["library"])
+async def mock_start_session_from_library(entry_id: str):
+    """Start a session from a shelf game entry.
+
+    Mirrors real behavior: create a chat session pre-linked to official
+    ruleset ids when present.
+    """
+    entry = next((item for item in MOCK_LIBRARY_STATE if item["id"] == entry_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Library entry not found.")
+
+    now = datetime.now(UTC)
+    active_ruleset_ids = entry.get("official_ruleset_ids")
+    if active_ruleset_ids is None and entry.get("official_ruleset_id"):
+        active_ruleset_ids = [entry["official_ruleset_id"]]
+
+    session = {
+        "id": str(uuid.uuid4()),
+        "user_id": MOCK_CURRENT_USER["id"],
+        "game_name": entry["game_name"],
+        "created_at": now.isoformat(),
+        "expires_at": (now + timedelta(hours=24)).isoformat(),
+        "persona": None,
+        "system_prompt_override": None,
+        "active_ruleset_ids": active_ruleset_ids or [],
+    }
+    entry["last_queried"] = now.isoformat()
+    MOCK_SESSIONS_STATE.insert(0, session)
+    logger.info("Mock: POST /library/%s/sessions → %s", entry_id, session["id"])
+    return session
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

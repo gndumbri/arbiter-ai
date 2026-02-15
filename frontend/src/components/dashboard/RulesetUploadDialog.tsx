@@ -190,6 +190,13 @@ export function RulesetUploadDialog() {
       // Bucket A: Open content → create session → redirect to chat
       setIsLoading(true);
       try {
+        // Keep shelf and Ask flow linked (idempotent if already present).
+        await api.addToLibrary({
+          game_slug: game.game_slug,
+          game_name: game.game_name,
+          official_ruleset_id: game.id,
+        }).catch(() => null);
+
         const session = await api.createSession({
           game_name: game.game_name,
           active_ruleset_ids: [game.id],
@@ -242,6 +249,13 @@ export function RulesetUploadDialog() {
       formData.append("source_type", "BASE");
 
       await api.uploadRuleset(session.id, formData);
+
+      // Keep shelf in sync even for custom/uploads-required games.
+      await api.addToLibrary({
+        game_slug: selectedGame?.game_slug || gameName.toLowerCase().replace(/\s+/g, "-"),
+        game_name: gameName,
+        official_ruleset_id: selectedGame?.id,
+      }).catch(() => null);
 
       toast({
         title: "Upload started",

@@ -192,6 +192,8 @@ def create_mock_library_entry(game_name: str, game_slug: str | None = None) -> d
         "game_slug": slug,
         "added_from_catalog": False,
         "official_ruleset_id": None,
+        "official_ruleset_ids": None,
+        "personal_ruleset_ids": None,
         "is_favorite": False,
         "favorite": False,
         "last_queried": None,

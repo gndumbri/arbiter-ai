@@ -186,10 +186,14 @@ When deploying to ECS with Secrets Manager JSON-key injection, only map keys you
 
 | Variable          | Required | Description                          |
 | ----------------- | -------- | ------------------------------------ |
+| `APP_MODE`        | Recommended | `sandbox` or `production` (email fallback behavior) |
 | `AUTH_SECRET`     | ✅       | JWT signing key (must match backend) |
 | `AUTH_TRUST_HOST` | Dev only | Set to `true` for localhost          |
 | `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
 | `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
+| `BREVO_API_KEY`   | Optional in sandbox, required in production | Magic-link provider key |
+| `EMAIL_FROM`      | Optional | Sender address (default `noreply@arbiter-ai.com`) |
+| `EMAIL_FROM_NAME` | Optional | Sender display name (default `Arbiter AI`) |
 
 ## API Documentation
 
@@ -281,6 +285,8 @@ cd backend && uv run python -m scripts.preflight --expected-mode production --pr
 ## Deployment
 
 See [docs/aws-deployment.md](docs/aws-deployment.md) for the AWS deployment guide covering ECS Fargate, RDS, ElastiCache, and CI/CD.
+GitHub Actions deploy gate is versioned at `.github/workflows/deploy.yml` and requires preflight success before ECS rollout.
+For ECS, runtime config comes from task-definition environment/secrets injection, not local `.env` files.
 
 ECS backend task-definition baseline is versioned in-repo at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
 

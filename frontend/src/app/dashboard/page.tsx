@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, MessageSquare, FileText, CheckCircle, AlertCircle, X } from "lucide-react";
@@ -14,11 +15,13 @@ import { api } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { data: rulesets, error, isLoading } = useSWR("rulesets", api.listRulesets, {
     refreshInterval: 5000, 
   });
   const { data: libraryEntries, mutate: mutateLibrary } = useSWR("library", api.listLibrary, { onError: () => {} });
   const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
+  const [startingSessionEntryId, setStartingSessionEntryId] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Fetch recent sessions for "Continue" section
@@ -49,6 +52,26 @@ export default function DashboardPage() {
       });
     } finally {
       setRemovingEntryId(null);
+    }
+  };
+
+  const handleAskFromShelf = async (entryId: string, gameName: string) => {
+    if (startingSessionEntryId || removingEntryId) return;
+
+    setStartingSessionEntryId(entryId);
+    try {
+      const session = await api.startSessionFromLibrary(entryId);
+      await mutateLibrary();
+      router.push(`/session/${session.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to start a game session.";
+      toast({
+        title: `Could not start ${gameName}`,
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setStartingSessionEntryId(null);
     }
   };
 
@@ -95,18 +118,33 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold text-muted-foreground">Games on Your Shelf</h3>
           <div className="flex flex-wrap gap-2">
             {libraryEntries.slice(0, 10).map((entry) => (
-              <Badge
+              <div
                 key={entry.id}
-                variant={entry.favorite ? "default" : "secondary"}
-                className="gap-1 pr-1"
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs ${
+                  entry.favorite
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border bg-secondary text-secondary-foreground"
+                }`}
               >
-                <span>{entry.game_name}</span>
+                <button
+                  type="button"
+                  onClick={() => handleAskFromShelf(entry.id, entry.game_name)}
+                  className="inline-flex items-center gap-1 rounded-full px-1 py-0.5 hover:bg-black/10 focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={startingSessionEntryId === entry.id || removingEntryId === entry.id}
+                >
+                  {startingSessionEntryId === entry.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <MessageSquare className="h-3 w-3" />
+                  )}
+                  <span>{entry.game_name}</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => handleRemoveFromShelf(entry.id, entry.game_name)}
                   aria-label={`Remove ${entry.game_name} from shelf`}
                   className="inline-flex h-4 w-4 items-center justify-center rounded-sm hover:bg-black/10 focus:outline-none focus:ring-1 focus:ring-ring"
-                  disabled={removingEntryId === entry.id}
+                  disabled={removingEntryId === entry.id || startingSessionEntryId === entry.id}
                 >
                   {removingEntryId === entry.id ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -114,7 +152,7 @@ export default function DashboardPage() {
                     <X className="h-3 w-3" />
                   )}
                 </button>
-              </Badge>
+              </div>
             ))}
           </div>
         </div>

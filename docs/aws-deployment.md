@@ -393,46 +393,36 @@ Configure Stripe to send webhook events to your production URL:
 
 ## CI/CD with GitHub Actions
 
-Create `.github/workflows/deploy.yml`:
+Use the repo workflow at `.github/workflows/deploy.yml`. It enforces a required `preflight` job before `deploy`.
 
-```yaml
-name: Deploy to ECS
-on:
-  push:
-    branches: [main]
+Workflow behavior:
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+- `workflow_dispatch` input chooses `sandbox` or `production`
+- Runs an ECS one-off task that executes `python -m scripts.preflight ...`
+- Blocks deploy when preflight exit code is non-zero
+- Deploys by updating the target ECS service only after preflight succeeds
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+Configure these repository values:
 
-      - name: Login to ECR
-        uses: aws-actions/amazon-ecr-login@v2
+- `AWS_REGION`
+- `ECS_CLUSTER`
+- `ECS_SUBNETS` (comma-separated subnet IDs)
+- `ECS_SECURITY_GROUPS` (comma-separated SG IDs)
+- `ECS_BACKEND_TASKDEF_SANDBOX`
+- `ECS_BACKEND_TASKDEF_PRODUCTION`
+- `ECS_BACKEND_SERVICE_SANDBOX`
+- `ECS_BACKEND_SERVICE_PRODUCTION`
+- `ECS_BACKEND_CONTAINER_NAME` (optional; defaults to `backend`)
+- `ECS_ASSIGN_PUBLIC_IP` (optional; `ENABLED`/`DISABLED`)
 
-      - name: Build, tag, push backend
-        run: |
-          docker build -t $ECR_REGISTRY/arbiter-ai/backend:$GITHUB_SHA ./backend
-          docker push $ECR_REGISTRY/arbiter-ai/backend:$GITHUB_SHA
+Configure this repository secret:
 
-      - name: Build, tag, push frontend
-        run: |
-          docker build -t $ECR_REGISTRY/arbiter-ai/frontend:$GITHUB_SHA ./frontend
-          docker push $ECR_REGISTRY/arbiter-ai/frontend:$GITHUB_SHA
+- `AWS_DEPLOY_ROLE_ARN` (OIDC assumable role with ECS + IAM permissions)
 
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          cluster: arbiter-ai
-          service: backend
-          task-definition: backend-task-def.json
+Run it from Actions UI:
+
+```text
+Actions → Deploy ECS → Run workflow
 ```
 
 ---

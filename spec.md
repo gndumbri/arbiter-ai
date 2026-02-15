@@ -76,6 +76,7 @@
 - Judge now accepts model-selected `citation_chunk_indexes` to align returned citations with the exact evidence used.
 - Judge requests now carry recent chat turns (`history`) so follow-up questions are interpreted with conversation continuity.
 - Session/agent creation now degrades gracefully if Redis rate-limit backend is unavailable (fail-open with warning logs) to preserve app availability.
+- Abuse-detection checks now also degrade gracefully if Redis is unavailable (fail-open with warning logs), preventing false 500s on ruleset upload in sandbox/degraded environments.
 - Frontend API errors now unwrap nested backend detail payloads so agent-creation failures show actionable messages instead of generic errors.
 - Settings account deletion now uses a multi-step branded warning dialog with escalating confirmations and a typed final confirmation (`RETIRE`).
 - CORS middleware now wraps the full backend middleware stack so `Access-Control-Allow-Origin` is still returned on auth/rate-limit/error responses (prevents false browser CORS failures during session/agent creation).
@@ -95,6 +96,10 @@
 - Open5e ingestion now supports multi-document open-license sync (CC/OGL/ORC) with scheduled Celery Beat jobs for production refresh.
 - Added one-shot maintenance scripts for production-safe sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
 - Added a deploy-grade backend preflight command (`backend/scripts/preflight.py`) plus `make preflight-sandbox` / `make preflight-production` gates for environment, DB, Redis, provider stack, and optional live Bedrock probes.
+- Added a repo GitHub Actions deploy workflow (`.github/workflows/deploy.yml`) that runs an ECS preflight task as a required gate before backend service deployment.
+- Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when Brevo is unavailable; production remains strict.
+- Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
+- Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).
 - Ask/chat UI width now uses tighter max-width containers to avoid over-stretched desktop layouts.
 - Added `GET /api/v1/sessions/{id}` for reliable single-session metadata fetch (game, persona, prompt override) in chat surfaces.

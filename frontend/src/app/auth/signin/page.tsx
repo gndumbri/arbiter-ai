@@ -3,7 +3,7 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
-import Link from "next/link";
+import { useSmartBack } from "@/hooks/use-smart-back";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const goBack = useSmartBack("/");
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,13 +31,13 @@ export default function SignInPage() {
 
   return (
     <div className="flex h-screen w-full flex-col items-center justify-center bg-background p-4">
-      <Link
-        href="/"
+      <button
+        onClick={goBack}
         className="absolute top-6 left-6 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Home
-      </Link>
+        Back
+      </button>
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
