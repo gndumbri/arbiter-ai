@@ -46,3 +46,21 @@ def test_deploy_workflow_imports_existing_ecs_services_before_plan() -> None:
     text = _read_workflow()
 
     assert 'terraform import "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true' in text
+
+
+def test_deploy_workflow_import_step_has_required_tf_vars() -> None:
+    text = _read_workflow()
+
+    assert "TF_VAR_secrets_manager_arn: ${{ secrets.SECRETS_MANAGER_ARN }}" in text
+    assert "TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}" in text
+    assert "TF_VAR_environment: ${{ steps.context.outputs.deploy_mode }}" in text
+    assert "IMPORT_ARGS+=(\"-var-file=${{ steps.context.outputs.tf_vars_file }}\")" in text
+
+
+def test_deploy_workflow_runs_infra_prebuild_checks_before_builds() -> None:
+    text = _read_workflow()
+
+    assert "infra-prebuild-check:" in text
+    assert "python3 infra/scripts/check_infra_inventory.py --check" in text
+    assert "terraform -chdir=infra/terraform validate" in text
+    assert "needs: [changes, infra-prebuild-check]" in text

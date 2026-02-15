@@ -1,5 +1,11 @@
 # Infrastructure Notes
 
+## Canonical Infra Docs
+
+- `infra/INFRA_INVENTORY.md` — current infra folder inventory and high-level permission matrix.
+- `infra/TERRAFORM_PERMISSION_MAP.md` — file-by-file Terraform AWS API families, create/reuse toggle behavior, and common failure signals.
+- Both are generated and validated by `python3 infra/scripts/check_infra_inventory.py` (also enforced in CI pre-build checks).
+
 ## NAT Gateway Assessment
 
 ### Why outbound internet access is needed
