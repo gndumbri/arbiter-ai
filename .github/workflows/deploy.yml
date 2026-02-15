@@ -149,6 +149,7 @@ jobs:
             -var="backend_image_tag=${{ steps.tags.outputs.backend_tag }}" \
             -var="frontend_image_tag=${{ steps.tags.outputs.frontend_tag }}" \
             -var="secrets_manager_arn=${{ secrets.SECRETS_MANAGER_ARN }}" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -out=tfplan
 
       - name: Terraform Apply
