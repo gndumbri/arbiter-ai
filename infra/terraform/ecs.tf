@@ -13,7 +13,7 @@ resource "aws_ecs_cluster" "main" {
 locals {
   # Canonical app URL fallback: if not explicitly provided, use the ALB hostname.
   # This keeps sandbox/prod deploys working even with minimal tfvars.
-  resolved_app_base_url = var.app_base_url != "" ? var.app_base_url : "http://${aws_lb.main.dns_name}"
+  resolved_app_base_url = var.app_base_url != "" ? var.app_base_url : "http://${local.alb_dns_name}"
   # Default CORS allow-list follows the canonical app URL when not overridden.
   resolved_allowed_origins = var.allowed_origins != "" ? var.allowed_origins : local.resolved_app_base_url
   # Frontend auth callbacks should generally point to the frontend origin.
@@ -316,12 +316,12 @@ resource "aws_ecs_service" "backend" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [local.ecs_security_group_id]
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.backend.arn
+    target_group_arn = local.backend_target_group_arn
     container_name   = "backend"
     container_port   = 8000
   }
@@ -346,12 +346,12 @@ resource "aws_ecs_service" "frontend" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [local.ecs_security_group_id]
     assign_public_ip = false
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.frontend.arn
+    target_group_arn = local.frontend_target_group_arn
     container_name   = "frontend"
     container_port   = 3000
   }
@@ -377,7 +377,7 @@ resource "aws_ecs_service" "worker" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [local.ecs_security_group_id]
     assign_public_ip = false
   }
 }
@@ -393,7 +393,7 @@ resource "aws_ecs_service" "beat" {
 
   network_configuration {
     subnets          = local.private_subnet_ids
-    security_groups  = [aws_security_group.ecs.id]
+    security_groups  = [local.ecs_security_group_id]
     assign_public_ip = false
   }
 }

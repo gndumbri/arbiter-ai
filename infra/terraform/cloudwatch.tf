@@ -1,8 +1,8 @@
 locals {
-  backend_log_group_name  = "/ecs/${var.project_name}-${var.environment}-backend"
-  frontend_log_group_name = "/ecs/${var.project_name}-${var.environment}-frontend"
-  worker_log_group_name   = "/ecs/${var.project_name}-${var.environment}-worker"
-  beat_log_group_name     = "/ecs/${var.project_name}-${var.environment}-beat"
+  backend_log_group_name  = "/ecs/${var.project_name}-backend"
+  frontend_log_group_name = "/ecs/${var.project_name}-frontend"
+  worker_log_group_name   = "/ecs/${var.project_name}-worker"
+  beat_log_group_name     = "/ecs/${var.project_name}-beat"
 }
 
 resource "aws_cloudwatch_log_group" "backend" {

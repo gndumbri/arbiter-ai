@@ -7,6 +7,8 @@ app_env     = "sandbox"
 
 # Bootstrap foundational infra in sandbox.
 create_networking            = true
+create_service_security_groups = true
+create_alb_resources         = true
 create_ecs_task_roles        = true
 create_cloudwatch_log_groups = true
 create_data_services         = true

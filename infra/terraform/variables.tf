@@ -129,6 +129,42 @@ variable "existing_private_subnet_ids" {
   default     = []
 }
 
+variable "create_service_security_groups" {
+  description = "When true, create ALB/ECS security groups. When false, reuse existing groups."
+  type        = bool
+  default     = false
+}
+
+variable "existing_alb_security_group_id" {
+  description = "Existing ALB security group ID when create_service_security_groups=false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_ecs_security_group_id" {
+  description = "Existing ECS tasks security group ID when create_service_security_groups=false."
+  type        = string
+  default     = ""
+}
+
+variable "create_alb_resources" {
+  description = "When true, create ALB/listeners/target groups. When false, reuse existing ALB target groups."
+  type        = bool
+  default     = false
+}
+
+variable "existing_backend_target_group_arn" {
+  description = "Existing backend target group ARN when create_alb_resources=false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_frontend_target_group_arn" {
+  description = "Existing frontend target group ARN when create_alb_resources=false."
+  type        = string
+  default     = ""
+}
+
 variable "alb_certificate_arn" {
   description = "ACM certificate ARN for ALB HTTPS listener (leave empty to run HTTP-only)"
   type        = string

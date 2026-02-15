@@ -13,7 +13,7 @@ resource "aws_vpc_security_group_ingress_rule" "redis_from_ecs" {
   count = var.create_data_services ? 1 : 0
 
   security_group_id            = aws_security_group.redis[0].id
-  referenced_security_group_id = aws_security_group.ecs.id
+  referenced_security_group_id = local.ecs_security_group_id
   ip_protocol                  = "tcp"
   from_port                    = 6379
   to_port                      = 6379

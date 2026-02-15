@@ -18,6 +18,8 @@ sandbox_email_bypass_enabled = true
 # Deploy-mode defaults (recommended for restricted CI roles):
 # Reuse pre-existing infra instead of creating privileged foundation resources.
 create_networking            = false
+create_service_security_groups = false
+create_alb_resources         = false
 create_github_actions_iam    = false
 create_ecs_task_roles        = false
 manage_ecs_task_role_policies = false
@@ -28,6 +30,10 @@ enable_shared_uploads        = false
 
 # Optional explicit IDs (leave blank to auto-discover by tag/name where supported).
 existing_vpc_id              = ""
+existing_alb_security_group_id = ""
+existing_ecs_security_group_id = ""
+existing_backend_target_group_arn = ""
+existing_frontend_target_group_arn = ""
 existing_public_subnet_ids   = []
 existing_private_subnet_ids  = []
 existing_ecs_task_execution_role_arn = ""

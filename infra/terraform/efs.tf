@@ -31,7 +31,7 @@ resource "aws_vpc_security_group_ingress_rule" "efs_from_ecs" {
   count = local.manage_uploads_efs ? 1 : 0
 
   security_group_id            = aws_security_group.efs[0].id
-  referenced_security_group_id = aws_security_group.ecs.id
+  referenced_security_group_id = local.ecs_security_group_id
   ip_protocol                  = "tcp"
   from_port                    = 2049
   to_port                      = 2049

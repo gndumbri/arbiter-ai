@@ -123,8 +123,12 @@ def test_terraform_supports_existing_infra_deploy_mode_defaults() -> None:
     vpc_text = _read_tf("infra/terraform/vpc.tf")
     iam_text = _read_tf("infra/terraform/iam.tf")
     cloudwatch_text = _read_tf("infra/terraform/cloudwatch.tf")
+    sg_text = _read_tf("infra/terraform/security_groups.tf")
+    alb_text = _read_tf("infra/terraform/alb.tf")
 
     assert 'variable "create_networking"' in vars_text
+    assert 'variable "create_service_security_groups"' in vars_text
+    assert 'variable "create_alb_resources"' in vars_text
     assert 'variable "create_ecs_task_roles"' in vars_text
     assert 'variable "create_github_actions_iam"' in vars_text
     assert 'variable "create_cloudwatch_log_groups"' in vars_text
@@ -133,6 +137,8 @@ def test_terraform_supports_existing_infra_deploy_mode_defaults() -> None:
     assert 'default     = false' in vars_text
     assert 'data "aws_vpcs" "existing"' in vpc_text
     assert 'data "aws_iam_role" "existing_ecs_task_execution"' in iam_text
+    assert 'data "aws_security_group" "existing_alb"' in sg_text
+    assert 'data "aws_lb_target_group" "existing_backend"' in alb_text
     assert 'local.backend_log_group_name' in cloudwatch_text
 
 
@@ -141,6 +147,8 @@ def test_terraform_commits_full_sandbox_bootstrap_profile() -> None:
 
     assert 'environment = "sandbox"' in sandbox_vars
     assert "create_networking            = true" in sandbox_vars
+    assert "create_service_security_groups = true" in sandbox_vars
+    assert "create_alb_resources         = true" in sandbox_vars
     assert "create_ecs_task_roles        = true" in sandbox_vars
     assert "create_cloudwatch_log_groups = true" in sandbox_vars
     assert "create_data_services         = true" in sandbox_vars
