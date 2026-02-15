@@ -13,6 +13,7 @@ Create Date: 2026-02-15 15:00:00.000000
 """
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -45,7 +46,7 @@ def upgrade() -> None:
         op.alter_column(
             table,
             "id",
-            server_default=op.inline_literal("gen_random_uuid()"),
+            server_default=sa.text("gen_random_uuid()"),
         )
 
 
