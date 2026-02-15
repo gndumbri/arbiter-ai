@@ -60,6 +60,24 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+# WHY: NextAuth routes (/api/auth/*) are handled by the frontend (Next.js),
+# not the backend. This must evaluate before the catch-all /api/* rule.
+resource "aws_lb_listener_rule" "nextauth" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 50
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/auth/*"]
+    }
+  }
+}
+
 resource "aws_lb_listener_rule" "api" {
   listener_arn = aws_lb_listener.http.arn
   priority     = 100
