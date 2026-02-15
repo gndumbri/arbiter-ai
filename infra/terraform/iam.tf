@@ -35,12 +35,13 @@ locals {
 }
 
 check "ecs_task_roles_inputs" {
-  assert = var.create_ecs_task_roles || (
-    local.ecs_task_execution_role_arn != "" &&
-    local.ecs_task_role_arn != ""
-  )
-
-  error_message = "create_ecs_task_roles=false requires existing ECS task role ARNs or discoverable role names."
+  assert {
+    condition = var.create_ecs_task_roles || (
+      local.ecs_task_execution_role_arn != "" &&
+      local.ecs_task_role_arn != ""
+    )
+    error_message = "create_ecs_task_roles=false requires existing ECS task role ARNs or discoverable role names."
+  }
 }
 
 # --- GitHub Actions OIDC (keyless auth for CI/CD) ---

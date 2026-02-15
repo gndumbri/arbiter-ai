@@ -11,9 +11,10 @@ locals {
 }
 
 check "shared_uploads_inputs" {
-  assert = !var.enable_shared_uploads || local.resolved_efs_file_system_id != ""
-
-  error_message = "enable_shared_uploads=true requires either create_efs_resources=true or existing_efs_file_system_id to be set."
+  assert {
+    condition     = !var.enable_shared_uploads || local.resolved_efs_file_system_id != ""
+    error_message = "enable_shared_uploads=true requires either create_efs_resources=true or existing_efs_file_system_id to be set."
+  }
 }
 
 resource "aws_security_group" "efs" {

@@ -51,13 +51,15 @@ locals {
 }
 
 check "existing_network_inputs" {
-  assert = var.create_networking || (
-    local.vpc_id != "" &&
-    length(local.public_subnet_ids) >= 2 &&
-    length(local.private_subnet_ids) >= 2
-  )
+  assert {
+    condition = var.create_networking || (
+      local.vpc_id != "" &&
+      length(local.public_subnet_ids) >= 2 &&
+      length(local.private_subnet_ids) >= 2
+    )
 
-  error_message = "create_networking=false requires an existing VPC and at least two public/private subnets. Set existing_vpc_id + subnet IDs explicitly or tag existing subnets with ${var.project_name}-public-* and ${var.project_name}-private-*."
+    error_message = "create_networking=false requires an existing VPC and at least two public/private subnets. Set existing_vpc_id + subnet IDs explicitly or tag existing subnets with ${var.project_name}-public-* and ${var.project_name}-private-*."
+  }
 }
 
 # --- VPC ---

@@ -1,8 +1,9 @@
 # --- RDS Security Group ---
 check "rds_password_when_enabled" {
-  assert = !var.create_data_services || trimspace(var.db_password) != ""
-
-  error_message = "create_data_services=true requires db_password."
+  assert {
+    condition     = !var.create_data_services || trimspace(var.db_password) != ""
+    error_message = "create_data_services=true requires db_password."
+  }
 }
 
 resource "aws_security_group" "rds" {
