@@ -13,7 +13,7 @@ import {
 
 import {
   to = aws_iam_openid_connect_provider.github_actions
-  id = "arn:aws:iam::788397033906:oidc-provider/token.actions.githubusercontent.com"
+  id = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
 }
 
 import {
