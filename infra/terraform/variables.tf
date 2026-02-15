@@ -61,13 +61,13 @@ variable "frontend_memory" {
 variable "backend_desired_count" {
   description = "Number of backend tasks"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "frontend_desired_count" {
   description = "Number of frontend tasks"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "secrets_manager_arn" {
