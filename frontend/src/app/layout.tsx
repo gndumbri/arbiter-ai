@@ -8,12 +8,25 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Arbiter AI",
-  description: "Advanced Rules Adjudication for Board Games",
+  description: "AI-powered rules adjudication for board games & tabletop RPGs. Upload your rulebooks, ask questions, get verdicts with citations.",
   manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Arbiter AI",
+  },
+  icons: {
+    icon: "/next.svg",
+    apple: "/next.svg",
+  },
 };
 
 export const viewport: Viewport = {
   themeColor: "#000000",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({

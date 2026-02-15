@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_price_id: str = ""
 
+    # Crowdsource ruling cache — when True, /rulings/cache-lookup returns
+    # matching public rulings instead of calling the LLM.
+    use_ruling_cache: bool = False
+
     # Reranker
     cohere_api_key: str = ""
 

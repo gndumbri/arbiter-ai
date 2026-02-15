@@ -43,6 +43,18 @@ function PrivacyIcon({ level }: { level: string }) {
   }
 }
 
+const PRIVACY_CYCLE: Record<string, string> = {
+  PRIVATE: "PARTY",
+  PARTY: "PUBLIC",
+  PUBLIC: "PRIVATE",
+};
+
+const PRIVACY_LABEL: Record<string, string> = {
+  PRIVATE: "Private",
+  PARTY: "Party",
+  PUBLIC: "Public",
+};
+
 // ─── Confidence Badge ──────────────────────────────────────────────────────
 
 function ConfidenceBadge({ confidence }: { confidence: number }) {
@@ -70,9 +82,13 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
 function RulingCard({
   ruling,
   onDelete,
+  onPrivacyCycle,
+  showPrivacyToggle,
 }: {
   ruling: SavedRulingResponse;
   onDelete: (id: string) => void;
+  onPrivacyCycle?: (id: string, newLevel: string) => void;
+  showPrivacyToggle?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const verdict = ruling.verdict_json;
@@ -91,7 +107,18 @@ function RulingCard({
                 {ruling.query}
               </CardTitle>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <PrivacyIcon level={ruling.privacy_level} />
+                {showPrivacyToggle && onPrivacyCycle ? (
+                  <button
+                    className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs hover:bg-muted transition-colors"
+                    onClick={() => onPrivacyCycle(ruling.id, PRIVACY_CYCLE[ruling.privacy_level] || "PRIVATE")}
+                    title={`Click to change (${PRIVACY_LABEL[ruling.privacy_level]})`}
+                  >
+                    <PrivacyIcon level={ruling.privacy_level} />
+                    <span className="text-muted-foreground">{PRIVACY_LABEL[ruling.privacy_level]}</span>
+                  </button>
+                ) : (
+                  <PrivacyIcon level={ruling.privacy_level} />
+                )}
                 {ruling.game_name && (
                   <Badge variant="outline" className="text-xs gap-1">
                     <Gamepad2 className="h-3 w-3" />
@@ -208,7 +235,7 @@ function RulingCard({
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function RulingsPage() {
-  const [activeTab, setActiveTab] = useState<"mine" | "community">("mine");
+  const [activeTab, setActiveTab] = useState<"mine" | "party" | "community">("mine");
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -221,6 +248,12 @@ export default function RulingsPage() {
   const { data: publicRulings, isLoading: loadingPublic } = useSWR(
     activeTab === "community" ? "rulings-public" : null,
     api.listPublicRulings,
+    { onError: () => {} }
+  );
+
+  const { data: partyRulings, isLoading: loadingParty } = useSWR(
+    activeTab === "party" ? ["rulings-party", selectedGame] : null,
+    () => api.listPartyRulings(selectedGame ?? undefined),
     { onError: () => {} }
   );
 
@@ -237,8 +270,17 @@ export default function RulingsPage() {
     }
   };
 
-  const rulings = activeTab === "mine" ? myRulings : publicRulings;
-  const isLoading = activeTab === "mine" ? loadingMine : loadingPublic;
+  const handlePrivacyCycle = async (id: string, newLevel: string) => {
+    try {
+      await api.updateRuling(id, { privacy_level: newLevel });
+      mutate(["rulings", selectedGame]);
+    } catch {
+      // silent
+    }
+  };
+
+  const rulings = activeTab === "mine" ? myRulings : activeTab === "party" ? partyRulings : publicRulings;
+  const isLoading = activeTab === "mine" ? loadingMine : activeTab === "party" ? loadingParty : loadingPublic;
 
   const filtered = rulings?.filter(
     (r) =>
@@ -270,6 +312,15 @@ export default function RulingsPage() {
         >
           <BookOpen className="h-4 w-4" />
           My Scrolls
+        </Button>
+        <Button
+          variant={activeTab === "party" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("party")}
+          className="gap-1.5"
+        >
+          <Users className="h-4 w-4" />
+          Party Scrolls
         </Button>
         <Button
           variant={activeTab === "community" ? "default" : "ghost"}
@@ -356,6 +407,8 @@ export default function RulingsPage() {
                 key={ruling.id}
                 ruling={ruling}
                 onDelete={handleDelete}
+                onPrivacyCycle={handlePrivacyCycle}
+                showPrivacyToggle={activeTab === "mine"}
               />
             ))}
           </AnimatePresence>
