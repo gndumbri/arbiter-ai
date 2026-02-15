@@ -64,3 +64,12 @@ def test_backend_taskdef_enables_periodic_catalog_and_rules_sync() -> None:
     assert env_map.get("OPEN_RULES_SYNC_ENABLED") == "true"
     assert env_map.get("CATALOG_RANKED_GAME_LIMIT") == "1000"
     assert env_map.get("OPEN_RULES_MAX_DOCUMENTS") == "20"
+
+
+def test_backend_taskdef_healthcheck_does_not_require_curl() -> None:
+    taskdef = _load_backend_taskdef()
+    health = taskdef["containerDefinitions"][0].get("healthCheck", {})
+    command = " ".join(health.get("command", []))
+
+    assert "curl" not in command
+    assert "python -c" in command

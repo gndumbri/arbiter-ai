@@ -254,3 +254,25 @@ resource "aws_iam_role_policy" "ecs_task_ssm" {
     }]
   })
 }
+
+# WHY: Backend defaults to Bedrock for both LLM and embeddings.
+# Task role must be allowed to invoke Bedrock foundation models.
+resource "aws_iam_role_policy" "ecs_task_bedrock" {
+  name = "${var.project_name}-ecs-task-bedrock"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ]
+      Resource = [
+        "arn:aws:bedrock:${var.aws_region}::foundation-model/anthropic.claude-3-5-sonnet-*",
+        "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
+      ]
+    }]
+  })
+}

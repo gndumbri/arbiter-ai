@@ -36,16 +36,16 @@ Each backend secret should be a **JSON object** with these required keys:
 ```json
 {
   "DATABASE_URL": "postgresql+asyncpg://user:pass@rds-host:5432/arbiter",
+  "FRONTEND_DATABASE_URL": "postgresql://user:pass@rds-host:5432/arbiter",
   "REDIS_URL": "redis://elasticache-host:6379/0",
-  "NEXTAUTH_SECRET": "<generate with: openssl rand -base64 32>",
-  "STRIPE_SECRET_KEY": "sk_test_... (sandbox) or sk_live_... (prod)",
-  "STRIPE_WEBHOOK_SECRET": "whsec_...",
-  "STRIPE_PRICE_ID": "price_..."
+  "NEXTAUTH_SECRET": "<generate with: openssl rand -base64 32>"
 }
 ```
 
 Optional (provider-dependent) keys:
 
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (required in production; optional in sandbox unless `inject_optional_sandbox_secrets=true`)
+- `BREVO_API_KEY` (required in production frontend email flows; optional in sandbox)
 - `OPENAI_API_KEY` when `LLM_PROVIDER=openai` and/or `EMBEDDING_PROVIDER=openai`
 - `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
 
@@ -70,11 +70,9 @@ aws secretsmanager create-secret \
   --name "arbiter-ai/sandbox" \
   --secret-string '{
     "DATABASE_URL": "postgresql+asyncpg://arbiter:PASSWORD@your-rds.us-east-1.rds.amazonaws.com:5432/arbiter",
+    "FRONTEND_DATABASE_URL": "postgresql://arbiter:PASSWORD@your-rds.us-east-1.rds.amazonaws.com:5432/arbiter",
     "REDIS_URL": "redis://your-elasticache.us-east-1.cache.amazonaws.com:6379/0",
-    "NEXTAUTH_SECRET": "<paste generated value>",
-    "STRIPE_SECRET_KEY": "sk_test_...",
-    "STRIPE_WEBHOOK_SECRET": "whsec_...",
-    "STRIPE_PRICE_ID": "price_..."
+    "NEXTAUTH_SECRET": "<paste generated value>"
   }' \
   --region us-east-1
 ```
@@ -136,6 +134,10 @@ environment     = "sandbox"
 app_mode        = "sandbox"
 app_base_url    = "https://sandbox.arbiter-ai.com"
 allowed_origins = "https://sandbox.arbiter-ai.com"
+alb_certificate_arn = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<SANDBOX_CERT_UUID>"
+frontend_nextauth_url = "https://sandbox.arbiter-ai.com"
+next_public_api_url = "/api/v1"
+inject_optional_sandbox_secrets = false
 secret_name     = "arbiter-ai/sandbox"
 ```
 
@@ -145,6 +147,9 @@ environment     = "production"
 app_mode        = "production"
 app_base_url    = "https://arbiter-ai.com"
 allowed_origins = "https://arbiter-ai.com,https://www.arbiter-ai.com"
+alb_certificate_arn = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<PROD_CERT_UUID>"
+frontend_nextauth_url = "https://arbiter-ai.com"
+next_public_api_url = "/api/v1"
 secret_name     = "arbiter-ai/production"
 ```
 
@@ -194,7 +199,7 @@ resource "aws_ecs_task_definition" "backend" {
     ]
 
     healthCheck = {
-      command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
       interval    = 30
       timeout     = 5
       retries     = 3
@@ -237,12 +242,16 @@ The frontend needs these env vars set in the hosting platform dashboard:
 | `AUTH_SECRET`     | Same as backend `NEXTAUTH_SECRET` | Same as backend `NEXTAUTH_SECRET` |
 | `AUTH_TRUST_HOST` | `true`                            | `true`                            |
 | `NEXTAUTH_URL`    | `https://sandbox.arbiter-ai.com`  | `https://arbiter-ai.com`          |
+| `NEXT_PUBLIC_API_URL` | `/api/v1` (recommended with ALB path routing) | `/api/v1` (or full backend URL) |
 | `DATABASE_URL`    | RDS connection string (non-async) | RDS connection string (non-async) |
 | `BREVO_API_KEY`   | Optional (console fallback)       | Required                          |
 | `EMAIL_FROM`      | `noreply@arbiter-ai.com`          | `noreply@arbiter-ai.com`          |
 
 > [!WARNING]
 > The frontend `DATABASE_URL` uses the **synchronous** driver (`postgresql://`), NOT the async one (`postgresql+asyncpg://`) that the backend uses. Same RDS instance, different connection string format.
+
+> [!IMPORTANT]
+> `NEXT_PUBLIC_*` variables are compiled into the frontend bundle at image build time. If `NEXT_PUBLIC_API_URL` is missing during build, production clients may fall back to local defaults. Set it in CI build args (or default to `/api/v1`).
 
 ---
 
@@ -273,24 +282,14 @@ The preflight command validates:
 
 ## Step 7: CI/CD Gate (Required)
 
-Use `.github/workflows/deploy.yml` as the deployment entrypoint. It blocks deploy unless the ECS preflight task exits `0`.
+Use `.github/workflows/deploy.yml` as the deployment entrypoint.
 
-Set these GitHub repository values:
+Set these GitHub repository secrets:
 
-- `vars.AWS_REGION`
-- `vars.ECS_CLUSTER`
-- `vars.ECS_SUBNETS` (comma-separated subnet IDs)
-- `vars.ECS_SECURITY_GROUPS` (comma-separated security group IDs)
-- `vars.ECS_BACKEND_TASKDEF_SANDBOX`
-- `vars.ECS_BACKEND_TASKDEF_PRODUCTION`
-- `vars.ECS_BACKEND_SERVICE_SANDBOX`
-- `vars.ECS_BACKEND_SERVICE_PRODUCTION`
-- `vars.ECS_BACKEND_CONTAINER_NAME` (optional, defaults to `backend`)
-- `vars.ECS_ASSIGN_PUBLIC_IP` (optional: `ENABLED` or `DISABLED`)
-
-Set this GitHub secret:
-
-- `secrets.AWS_DEPLOY_ROLE_ARN` (OIDC-assumable role for ECS deploy + run-task)
+- `secrets.AWS_ROLE_ARN` (OIDC-assumable deploy role)
+- `secrets.SECRETS_MANAGER_ARN` (secret used by Terraform task definitions)
+- `secrets.DB_PASSWORD` (RDS master password Terraform input)
+- `secrets.NEXT_PUBLIC_API_URL` (optional; defaults to `/api/v1` in build job)
 
 Trigger the workflow manually:
 
@@ -304,7 +303,7 @@ Actions → Deploy ECS → Run workflow
 
 Before you go live, verify:
 
-- [ ] **Secrets Manager** has all 6 required backend keys populated for the target environment
+- [ ] **Secrets Manager** includes `DATABASE_URL`, `FRONTEND_DATABASE_URL`, `REDIS_URL`, and `NEXTAUTH_SECRET` for the target environment
 - [ ] **ECS execution role** can read from `arbiter-ai/*` in Secrets Manager
 - [ ] **ECS task role** has Bedrock `InvokeModel` permission
 - [ ] **RDS** is accessible from the ECS security group (port 5432)
@@ -312,10 +311,11 @@ Before you go live, verify:
 - [ ] **pgvector extension** is enabled on the RDS instance (`CREATE EXTENSION IF NOT EXISTS vector;`)
 - [ ] **DB migrations** have been run (tables exist: `users`, `accounts`, `verification_tokens`, etc.)
 - [ ] **`NEXTAUTH_SECRET`** matches between backend secret and frontend env
+- [ ] **`NEXT_PUBLIC_API_URL`** is set for frontend build (or intentionally defaults to `/api/v1`)
 - [ ] **Stripe webhook** is pointed at `https://<domain>/api/v1/billing/webhooks/stripe`
 - [ ] **Brevo sender domain** is verified (or using a verified sender email)
 - [ ] **Preflight gate passes** (`make preflight-sandbox` / `make preflight-production`)
-- [ ] **GitHub deploy workflow preflight job passes** before ECS service update
+- [ ] **GitHub deploy workflow** succeeds (image build + Terraform apply + ECS service stabilization)
 - [ ] **Health check** passes: `curl https://<domain>/health`
 
 ---

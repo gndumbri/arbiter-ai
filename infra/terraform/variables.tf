@@ -5,9 +5,9 @@ variable "aws_region" {
 }
 
 variable "environment" {
-  description = "Environment name (e.g. prod, staging)"
+  description = "Environment name (e.g. production, sandbox, staging)"
   type        = string
-  default     = "prod"
+  default     = "production"
 }
 
 variable "project_name" {
@@ -16,10 +16,76 @@ variable "project_name" {
   default     = "arbiter-ai"
 }
 
+variable "app_mode" {
+  description = "Application mode passed to services (mock|sandbox|production)"
+  type        = string
+  default     = "production"
+}
+
+variable "app_env" {
+  description = "Application environment label (e.g. development|staging|production)"
+  type        = string
+  default     = "production"
+}
+
+variable "app_base_url" {
+  description = "Canonical frontend URL for backend links/CORS; defaults to ALB URL when empty"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_origins" {
+  description = "Comma-separated CORS origins for backend; defaults to app_base_url (or ALB URL when empty)"
+  type        = string
+  default     = ""
+}
+
+variable "trusted_proxy_hops" {
+  description = "Trusted proxy depth for X-Forwarded-For parsing"
+  type        = number
+  default     = 1
+}
+
+variable "frontend_nextauth_url" {
+  description = "NEXTAUTH_URL for frontend service; defaults to app_base_url (or ALB URL when empty)"
+  type        = string
+  default     = ""
+}
+
+variable "next_public_api_url" {
+  description = "Frontend NEXT_PUBLIC_API_URL value (use /api/v1 for ALB path routing)"
+  type        = string
+  default     = "/api/v1"
+}
+
+variable "email_from" {
+  description = "Default sender email for frontend auth emails"
+  type        = string
+  default     = "noreply@arbiter-ai.com"
+}
+
+variable "email_from_name" {
+  description = "Default sender display name for frontend auth emails"
+  type        = string
+  default     = "Arbiter AI"
+}
+
+variable "inject_optional_sandbox_secrets" {
+  description = "When true, include optional sandbox secret mappings (Stripe/Brevo). Production always includes them."
+  type        = bool
+  default     = false
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string
   default     = "10.0.0.0/16"
+}
+
+variable "alb_certificate_arn" {
+  description = "ACM certificate ARN for ALB HTTPS listener (leave empty to run HTTP-only)"
+  type        = string
+  default     = ""
 }
 
 variable "backend_image_tag" {

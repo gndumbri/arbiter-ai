@@ -74,6 +74,10 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
 - Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.
 - API now supports direct session metadata lookup by ID for more reliable game-context rendering in Ask/chat views.
+- Frontend production builds now default API calls to same-origin `/api/v1` when `NEXT_PUBLIC_API_URL` is missing, avoiding accidental `localhost:8000` calls in AWS.
+- Terraform deploy wiring now supports environment-specific URL/CORS/auth vars and optional sandbox secret injection, preventing ECS startup failures when non-production keys (e.g., Brevo/Stripe) are intentionally omitted.
+- Frontend environment badge now avoids `localhost` health probes in production builds and follows same-origin fallback behavior.
+- ECS health checks were hardened to avoid `curl` dependencies, and Terraform env naming now consistently uses `production`, preventing snapshot-policy drift and startup surprises.
 
 ### F1: Game Library (Dashboard)
 

@@ -18,7 +18,9 @@ COPY . .
 
 # WHY: Next.js needs these at BUILD time for static optimization.
 # Runtime secrets are injected via environment variables at container start.
+ARG NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
 

@@ -100,6 +100,11 @@
 - Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when Brevo is unavailable; production remains strict.
 - Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
 - Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
+- Frontend API base resolution now defaults to same-origin `/api/v1` in production when `NEXT_PUBLIC_API_URL` is unset (instead of `localhost`), preventing broken AWS browser calls.
+- Environment badge health checks now follow the same production-safe API base fallback (same-origin) instead of `localhost`.
+- Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe/Brevo to avoid startup failures when those keys are intentionally absent.
+- ECS task-definition health checks now avoid `curl` dependencies (backend uses Python stdlib probe; frontend uses Node fetch probe) for cleaner container startup on minimal base images.
+- Terraform environment defaults now consistently use `production` (not mixed `prod`/`production`), including RDS final-snapshot safeguards.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).
 - Ask/chat UI width now uses tighter max-width containers to avoid over-stretched desktop layouts.
 - Added `GET /api/v1/sessions/{id}` for reliable single-session metadata fetch (game, persona, prompt override) in chat surfaces.

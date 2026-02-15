@@ -2,7 +2,8 @@
  * api.ts — Typed API client for Arbiter AI backend.
  *
  * All methods auto-attach the NextAuth JWT as a Bearer token.
- * Uses the NEXT_PUBLIC_API_URL env var or defaults to localhost:8000.
+ * Uses NEXT_PUBLIC_API_URL when set. In production, defaults to same-origin /api/v1.
+ * In development, defaults to localhost:8000.
  *
  * Called by: All frontend pages and components that fetch data.
  * Depends on: next-auth (getSession), backend /api/v1/* endpoints.
@@ -10,7 +11,17 @@
 
 import { getSession } from "next-auth/react";
 
-const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim();
+const RAW_API_BASE_URL =
+  ENV_API_BASE_URL ||
+  (process.env.NODE_ENV === "production" ? "/api/v1" : "http://localhost:8000/api/v1");
+
+if (!ENV_API_BASE_URL && process.env.NODE_ENV === "production") {
+  // WHY: Prevent silent localhost fallbacks in production bundles.
+  // Same-origin /api/v1 works with ALB path routing (/api/* -> backend).
+  console.warn("NEXT_PUBLIC_API_URL is not set; defaulting frontend API calls to same-origin /api/v1.");
+}
+
 export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, "").endsWith("/api/v1")
   ? RAW_API_BASE_URL.replace(/\/+$/, "")
   : `${RAW_API_BASE_URL.replace(/\/+$/, "")}/api/v1`;
