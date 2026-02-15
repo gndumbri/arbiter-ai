@@ -331,6 +331,37 @@ aws ecs run-task \
 
 ---
 
+## Step 5b: Deployment Preflight Gate
+
+Before promoting sandbox or production, run the backend preflight checks:
+
+```bash
+# Sandbox / staging gate
+make preflight-sandbox
+
+# Production gate
+make preflight-production
+```
+
+This validates:
+
+- Environment mode + required keys (`APP_MODE`, auth/billing/provider requirements)
+- Database connectivity (`SELECT 1`)
+- Redis connectivity (`PING`)
+- Provider stack instantiation (LLM/embedder/vector/reranker/parser)
+- Optional live Bedrock probes (embedding for sandbox, embedding + LLM for production)
+
+For CI pipelines, use JSON output:
+
+```bash
+cd backend && uv run python -m scripts.preflight --expected-mode production --probe-embedding --probe-llm --json
+```
+
+> [!NOTE]
+> The probe flags make live Bedrock calls and incur normal API usage cost. Keep them enabled for release gates, not every local edit loop.
+
+---
+
 ## Step 6: Stripe Webhook
 
 Configure Stripe to send webhook events to your production URL:
@@ -422,4 +453,5 @@ jobs:
 - [ ] `APP_ENV=production` set in Secrets Manager
 - [ ] `ALLOWED_ORIGINS` set to production domain
 - [ ] `CATALOG_SYNC_ENABLED=true` and `OPEN_RULES_SYNC_ENABLED=true` for automatic refresh
+- [ ] `make preflight-production` passes for the exact release image/env
 - [ ] Smoke test: hit `/health`, `/api/v1/catalog/`, sign in, run a query
