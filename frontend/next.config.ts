@@ -10,9 +10,22 @@ const withPWA = require("@ducanh2912/next-pwa").default({
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
-  // Ensure images from Google/etc are allowed if using Auth avatars
+  // WHY: 'standalone' creates a self-contained build (copies only needed
+  // node_modules files into .next/standalone). Required for Docker/ECS
+  // deployment where we want a minimal image without full node_modules.
+  output: "standalone",
+  // WHY: Next.js 16 defaults to Turbopack. The PWA plugin adds webpack
+  // config, so we need an explicit empty turbopack config to avoid the
+  // "webpack config with no turbopack config" error.
+  turbopack: {},
+  // Allow images from Google auth avatars
   images: {
-    domains: ["lh3.googleusercontent.com"], 
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "lh3.googleusercontent.com",
+      },
+    ],
   },
 };
 

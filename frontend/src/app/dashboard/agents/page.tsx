@@ -32,7 +32,7 @@ export default function AgentsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex h-48 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : error ? (
@@ -40,7 +40,7 @@ export default function AgentsPage() {
           Failed to load agents.
         </div>
       ) : agents?.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-center">
+        <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <Bot className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">No agents yet</h3>
           <p className="mb-4 text-sm text-muted-foreground">

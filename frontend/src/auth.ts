@@ -3,6 +3,7 @@ import NextAuth from "next-auth";
 // import { db } from "@/db";
 // import { accounts, users, verificationTokens } from "@/db/auth-schema";
 import Email from "next-auth/providers/email";
+import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
 import { communication } from "@/lib/communication/service";
 
@@ -32,6 +33,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     //     });
     //   },
     // }),
+    Credentials({
+      id: "credentials",
+      name: "Dev Login",
+      credentials: {
+        email: { label: "Email", type: "email" },
+      },
+      authorize: async (credentials) => {
+        if (process.env.NODE_ENV !== "development") return null;
+        
+        const email = credentials.email as string;
+        // Allow specific dev emails or just checking format
+        if (email === "kasey.kaplan@gmail.com") {
+             return { id: "dev-user-id", email: email, name: "Kasey Kaplan (Dev)" };
+        }
+        return null;
+      }
+    })
   ],
 });
 

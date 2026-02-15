@@ -1,10 +1,12 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Lightbulb, FileText } from "lucide-react";
+import { Lightbulb, FileText, Bookmark, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Accordion,
   AccordionContent,
@@ -12,6 +14,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { motion } from "framer-motion";
+import { api } from "@/lib/api";
 
 interface MessageBubbleProps {
   message: {
@@ -24,11 +27,47 @@ interface MessageBubbleProps {
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onCitationClick?: (citation: any) => void;
+  onFollowUp?: (question: string) => void;
 }
 
-export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) {
+function ConfidencePill({ confidence }: { confidence: number }) {
+  const pct = Math.round(confidence * 100);
+  const color =
+    confidence >= 0.8
+      ? "bg-green-500/15 text-green-400 border-green-500/30"
+      : confidence >= 0.5
+      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
+      : "bg-red-500/15 text-red-400 border-red-500/30";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-mono font-medium ${color}`}>
+      {pct}%
+    </span>
+  );
+}
+
+export function MessageBubble({ message, onCitationClick, onFollowUp }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const { verdict } = message;
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleSaveRuling = async () => {
+    if (!verdict || saved || saving) return;
+    setSaving(true);
+    try {
+      await api.saveRuling({
+        query: message.content,
+        verdict_json: verdict,
+        privacy_level: "PRIVATE",
+      });
+      setSaved(true);
+    } catch {
+      // silent fail
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <motion.div
@@ -62,23 +101,34 @@ export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) 
              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
           )}
 
-          {/* Verdict Badge */}
+          {/* Verdict Header */}
           {verdict && !isUser && (
             <div className="relative mb-3 flex flex-wrap items-center gap-2 border-b border-border/10 pb-2">
-               <Badge 
-                  variant={verdict.verdict.includes("ALLOW") ? "outline" : "destructive"}
-                  className={cn(
-                    "text-xs uppercase tracking-wider font-bold shadow-sm",
-                     verdict.verdict.includes("ALLOW") ? "border-green-500/50 text-green-500" : "border-red-500/50"
-                  )}
-                >
-                 {verdict.verdict}
-               </Badge>
-               {verdict.confidence && (
-                 <span className="text-xs text-muted-foreground font-mono">
-                   {Math.round(verdict.confidence * 100)}% CONFIDENCE
-                 </span>
+               {verdict.confidence !== undefined && (
+                 <ConfidencePill confidence={verdict.confidence} />
                )}
+               {verdict.model && (
+                 <Badge variant="secondary" className="text-[10px] font-mono tracking-tighter opacity-70">
+                   {verdict.model}
+                 </Badge>
+               )}
+               {/* Save Ruling Button */}
+               <Button
+                 variant="ghost"
+                 size="sm"
+                 className={cn(
+                   "h-6 px-2 text-xs gap-1 ml-auto",
+                   saved ? "text-green-400" : "text-muted-foreground hover:text-primary"
+                 )}
+                 onClick={handleSaveRuling}
+                 disabled={saving || saved}
+               >
+                 {saved ? (
+                   <><Check className="h-3 w-3" /> Saved</>
+                 ) : (
+                   <><Bookmark className="h-3 w-3" /> Save</>
+                 )}
+               </Button>
             </div>
           )}
 
@@ -136,6 +186,26 @@ export function MessageBubble({ message, onCitationClick }: MessageBubbleProps) 
                </Card>
              ))}
            </motion.div>
+        )}
+
+        {/* Follow-Up Hint Chips */}
+        {verdict && verdict.follow_up_hint && !isUser && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="flex flex-wrap gap-2 mt-1"
+          >
+            {verdict.follow_up_hint.split(/[?.]/).filter((h: string) => h.trim().length > 5).slice(0, 3).map((hint: string, i: number) => (
+              <button
+                key={i}
+                className="rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs text-primary hover:bg-primary/10 hover:border-primary/50 transition-colors"
+                onClick={() => onFollowUp?.(hint.trim() + "?")}
+              >
+                {hint.trim()}?
+              </button>
+            ))}
+          </motion.div>
         )}
         
         {/* Timestamp */}

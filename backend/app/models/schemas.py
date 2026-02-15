@@ -70,6 +70,7 @@ class JudgeQuery(BaseModel):
     session_id: uuid.UUID
     query: str = Field(..., min_length=1, max_length=500)
     game_name: str | None = None
+    ruleset_ids: list[uuid.UUID] | None = None
 
 
 class VerdictCitation(BaseModel):
@@ -102,6 +103,7 @@ class JudgeVerdict(BaseModel):
     conflicts: list[VerdictConflict] | None = None
     follow_up_hint: str | None = None
     query_id: uuid.UUID
+    model: str = "unknown"
 
 
 class FeedbackRequest(BaseModel):

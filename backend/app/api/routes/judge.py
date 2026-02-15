@@ -1,4 +1,29 @@
-"""Judge routes — adjudication query and feedback endpoints."""
+"""judge.py — Adjudication query and feedback endpoints (The Judge).
+
+The core adjudication route: accepts a rules question, resolves the
+appropriate Pinecone namespaces from the session's rulesets, enforces
+billing limits, runs the RAG pipeline, and returns a structured verdict.
+
+Endpoints:
+    POST /api/v1/judge              → Submit a rules question
+    POST /api/v1/judge/{id}/feedback → Submit feedback on a verdict
+
+Called by: Frontend ChatInterface component via api.ts (submitQuery).
+Depends on: deps.py (CurrentUser, DbSession, GetSettings),
+            core/adjudication.py (AdjudicationEngine),
+            core/registry.py (provider factory),
+            tables.py (QueryAuditLog, Session, RulesetMetadata, Subscription, SubscriptionTier)
+
+Architecture note for AI agents:
+    Namespace resolution is CRITICAL. Each uploaded ruleset gets its own
+    Pinecone namespace (set during ingestion as `pinecone_namespace` on
+    the RulesetMetadata row). The judge must resolve these namespaces
+    from the session's rulesets to search the correct vector store data.
+    If no rulesets are found, adjudication falls back to the session-level
+    namespace for backward compatibility.
+
+    Session expiry is enforced here — expired sessions return 410 Gone.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +44,7 @@ from app.models.schemas import (
     VerdictCitation,
     VerdictConflict,
 )
-from app.models.tables import QueryAuditLog, Subscription, SubscriptionTier
+from app.models.tables import QueryAuditLog, RulesetMetadata, Session, Subscription, SubscriptionTier
 
 router = APIRouter(prefix="/api/v1", tags=["judge"])
 logger = structlog.get_logger()
@@ -34,17 +59,85 @@ async def submit_query(
 ) -> JudgeVerdict:
     """Submit a rules question for adjudication.
 
-    Enforces billing limits based on user's subscription tier.
+    Auth: JWT required.
+    Rate limit: Tier-based (FREE=5/day, PRO=unlimited).
+    Tier: All tiers (with limits).
+
+    Flow:
+        1. Validate session exists and is not expired
+        2. Resolve Pinecone namespaces from session's rulesets
+        3. Check daily query limit based on subscription tier
+        4. Run RAG adjudication pipeline
+        5. Persist query + verdict to audit log
+        6. Return structured verdict with citations
+
+    Args:
+        body: JudgeQuery with session_id, query text, optional ruleset_ids filter.
+
+    Returns:
+        JudgeVerdict with verdict text, confidence, citations, and conflicts.
+
+    Raises:
+        HTTPException: 404 if session not found, 410 if expired,
+                       429 if rate limited, 500 if adjudication fails.
     """
-    # 1. Resolve User Tier
-    # Check for active subscription
+    # ── 1. Validate session exists and is not expired ─────────────────────
+    if body.session_id:
+        session_result = await db.execute(
+            select(Session).where(
+                Session.id == body.session_id,
+                Session.user_id == user["id"],
+            )
+        )
+        session_record = session_result.scalar_one_or_none()
+
+        if not session_record:
+            raise HTTPException(status_code=404, detail="Session not found.")
+
+        # WHY: Sessions have expiry dates (24h FREE, 30d PRO) set at creation.
+        # Enforcing expiry here prevents queries against stale sessions.
+        if session_record.expires_at and session_record.expires_at < datetime.now(UTC):
+            raise HTTPException(
+                status_code=410,
+                detail="Session has expired. Create a new session to continue.",
+            )
+
+    # ── 2. Resolve Pinecone namespaces from session's rulesets ────────────
+    # WHY: Each uploaded ruleset gets stored in a Pinecone namespace named
+    # after its UUID (convention: `ruleset_{id}`). We query indexed rulesets
+    # for this session and construct namespace strings from their IDs.
+    namespaces: list[str] = []
+
+    if body.session_id:
+        # Build query to find indexed rulesets for this session
+        ns_stmt = (
+            select(RulesetMetadata.id)
+            .where(
+                RulesetMetadata.session_id == body.session_id,
+                RulesetMetadata.status == "INDEXED",
+            )
+        )
+
+        # If the frontend sent specific ruleset_ids, filter to only those
+        if body.ruleset_ids:
+            ns_stmt = ns_stmt.where(RulesetMetadata.id.in_(body.ruleset_ids))
+
+        ns_result = await db.execute(ns_stmt)
+        namespaces = [f"ruleset_{row[0]}" for row in ns_result.all()]
+
+    # Fallback: if no rulesets found, use session-level namespace
+    # WHY: Backward compatibility — older sessions may have data under
+    # this namespace pattern from before proper namespace resolution.
+    if not namespaces:
+        namespaces = [f"session_{body.session_id}"] if body.session_id else ["user_anonymous"]
+
+    # ── 3. Resolve tier and check daily query limits ──────────────────────
     stmt = select(Subscription).where(Subscription.user_id == user["id"])
     result = await db.execute(stmt)
     subscription = result.scalar_one_or_none()
 
     tier_name = subscription.plan_tier if subscription else "FREE"
 
-    # 2. Get Tier Limits
     tier_stmt = select(SubscriptionTier).where(SubscriptionTier.name == tier_name)
     tier_result = await db.execute(tier_stmt)
     tier_config = tier_result.scalar_one_or_none()
@@ -52,7 +145,6 @@ async def submit_query(
     # Fallback if tier config missing (should include seed data)
     daily_limit = tier_config.daily_query_limit if tier_config else 5
 
-    # 3. Check Usage (if not unlimited)
     if daily_limit != -1:
         start_of_day = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -73,7 +165,7 @@ async def submit_query(
                 ),
             )
 
-    # 4. Proceed with Adjudication...
+    # ── 4. Run RAG adjudication pipeline ──────────────────────────────────
     registry = get_provider_registry()
 
     engine = AdjudicationEngine(
@@ -82,12 +174,6 @@ async def submit_query(
         vector_store=registry.get_vector_store(),
         reranker=registry.get_reranker(),
     )
-
-    # Build namespace list from session
-    # TODO: resolve actual namespaces from session's rulesets + official catalog
-    namespaces = ["user_anonymous"]  # Placeholder
-    if body.session_id:
-        namespaces = [f"session_{body.session_id}"]
 
     try:
         verdict = await engine.adjudicate(
@@ -102,7 +188,7 @@ async def submit_query(
             detail=f"Adjudication failed: {exc}",
         ) from exc
 
-    # Persist to audit log
+    # ── 5. Persist to audit log ───────────────────────────────────────────
     audit = QueryAuditLog(
         id=uuid.UUID(verdict.query_id),
         session_id=body.session_id,
@@ -120,8 +206,10 @@ async def submit_query(
         query_id=verdict.query_id,
         confidence=verdict.confidence,
         latency_ms=verdict.latency_ms,
+        namespaces=namespaces,
     )
 
+    # ── 6. Return structured verdict ──────────────────────────────────────
     return JudgeVerdict(
         query_id=uuid.UUID(verdict.query_id),
         verdict=verdict.verdict,
@@ -145,6 +233,7 @@ async def submit_query(
             for c in verdict.conflicts
         ] if verdict.conflicts else None,
         follow_up_hint=verdict.follow_up_hint,
+        model=verdict.model,
     )
 
 
@@ -154,7 +243,19 @@ async def submit_feedback(
     body: FeedbackRequest,
     db: DbSession,
 ) -> None:
-    """Submit feedback (thumbs up/down) for a verdict."""
+    """Submit feedback (thumbs up/down) for a verdict.
+
+    Auth: None (feedback is anonymous for simplicity).
+    Rate limit: None.
+    Tier: All tiers.
+
+    Args:
+        query_id: UUID of the query to leave feedback on.
+        body: FeedbackRequest with feedback string ('up' or 'down').
+
+    Raises:
+        HTTPException: 404 if query not found.
+    """
     result = await db.execute(
         update(QueryAuditLog)
         .where(QueryAuditLog.id == query_id)

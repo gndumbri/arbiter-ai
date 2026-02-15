@@ -8,23 +8,23 @@
 
 ### 1.1 Technology Stack
 
-| Layer           | Technology                       | Version   | Purpose                                             |
-| --------------- | -------------------------------- | --------- | --------------------------------------------------- |
-| **API**         | FastAPI                          | 0.110+    | REST API, async request handling                    |
-| **Task Queue**  | Celery + Redis                   | 5.3+ / 7+ | Async ingestion, scheduled cleanup                  |
-| **Database**    | PostgreSQL                       | 16        | Relational data, user accounts                      |
-| **ORM**         | SQLAlchemy                       | 2.0+      | Database models and queries                         |
-| **Migrations**  | Alembic                          | 1.13+     | Schema versioning                                   |
-| **Vector DB**   | Pinecone Serverless              | —         | Semantic search, per-tenant namespaces              |
-| **Embedding**   | OpenAI `text-embedding-3-small`  | —         | 1536-dim embeddings                                 |
-| **LLM**         | OpenAI GPT-4o / Anthropic Claude | —         | Query expansion, verdict generation, classification |
-| **PDF Parsing** | Docling / Unstructured           | —         | Layout-aware PDF extraction                         |
-| **Frontend**    | Next.js 14+ (App Router)         | 14+       | PWA, React Server Components                        |
-| **Auth**        | Supabase Auth                    | —         | JWT, OAuth (Google, GitHub)                         |
-| **Billing**     | Stripe                           | —         | Subscriptions, webhooks                             |
-| **Virus Scan**  | ClamAV                           | —         | Malware detection                                   |
-| **Config**      | pydantic-settings                | 2.0+      | Typed configuration from env vars                   |
-| **Reranker**    | Cohere Rerank v3 / bge-reranker  | —         | Cross-encoder scoring                               |
+| Layer           | Technology                     | Version   | Purpose                                             |
+| --------------- | ------------------------------ | --------- | --------------------------------------------------- |
+| **API**         | FastAPI                        | 0.110+    | REST API, async request handling                    |
+| **Task Queue**  | Celery + Redis                 | 5.3+ / 7+ | Async ingestion, scheduled cleanup                  |
+| **Database**    | PostgreSQL                     | 16        | Relational data, user accounts                      |
+| **ORM**         | SQLAlchemy                     | 2.0+      | Database models and queries                         |
+| **Migrations**  | Alembic                        | 1.13+     | Schema versioning                                   |
+| **Vector DB**   | Pinecone Serverless            | —         | Semantic search, per-tenant namespaces              |
+| **Embedding**   | OpenAI / AWS Bedrock Titan v2  | —         | 1536-dim embeddings (provider-swappable)            |
+| **LLM**         | OpenAI GPT-4o / Bedrock Claude | —         | Query expansion, verdict generation, classification |
+| **Reranker**    | Cohere Rerank v3 / FlashRank   | —         | Cross-encoder scoring (API or local)                |
+| **PDF Parsing** | Docling / Unstructured         | —         | Layout-aware PDF extraction                         |
+| **Frontend**    | Next.js 14+ (App Router)       | 14+       | PWA, React Server Components                        |
+| **Auth**        | NextAuth.js v5 + Brevo         | —         | Passwordless magic links, JWT sessions              |
+| **Billing**     | Stripe                         | —         | Subscriptions, webhooks                             |
+| **Config**      | pydantic-settings              | 2.0+      | Typed configuration from env vars                   |
+| **Logging**     | structlog                      | —         | Structured JSON logging with request IDs            |
 
 ### 1.2 Service Boundaries
 
@@ -176,6 +176,78 @@ CREATE INDEX idx_user_game_library_user_id ON user_game_library(user_id);
 CREATE INDEX idx_query_audit_log_user_id ON query_audit_log(user_id);
 CREATE INDEX idx_query_audit_log_session_id ON query_audit_log(session_id);
 CREATE INDEX idx_query_audit_log_created_at ON query_audit_log(created_at);
+
+-- Auth (NextAuth.js)
+CREATE TABLE accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_account_id TEXT NOT NULL,
+    refresh_token TEXT,
+    access_token TEXT,
+    expires_at INT,
+    UNIQUE(provider, provider_account_id)
+);
+
+CREATE TABLE auth_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_token TEXT UNIQUE NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    expires TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE verification_tokens (
+    identifier TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    expires TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (identifier, token)
+);
+
+-- Subscriptions & Billing
+CREATE TABLE subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    stripe_subscription_id TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    current_period_end TIMESTAMPTZ,
+    plan_tier TEXT NOT NULL DEFAULT 'FREE',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE subscription_tiers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT UNIQUE NOT NULL,       -- 'FREE', 'PRO'
+    daily_query_limit INT NOT NULL,  -- -1 for unlimited
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Social: Parties & Saved Rulings
+CREATE TABLE parties (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE party_members (
+    party_id UUID REFERENCES parties(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT DEFAULT 'MEMBER',  -- OWNER, ADMIN, MEMBER
+    joined_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (party_id, user_id)
+);
+
+CREATE TABLE saved_rulings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    query TEXT NOT NULL,
+    verdict_json JSONB NOT NULL,
+    privacy_level TEXT DEFAULT 'PRIVATE',  -- PRIVATE, PARTY, PUBLIC
+    tags JSONB,                             -- ["combat", "magic"]
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
 ### 2.2 Pinecone Configuration
@@ -202,32 +274,55 @@ CREATE INDEX idx_query_audit_log_created_at ON query_audit_log(created_at);
 
 ### 3.1 Authentication
 
-- **Users:** `Authorization: Bearer <supabase_jwt>`
-- **Publishers:** `X-Publisher-Key: <api_key>`
-- **Webhooks:** Stripe signature verification
+- **Users:** `Authorization: Bearer <nextauth_jwt>` (NextAuth v5 JWT strategy, verified with NEXTAUTH_SECRET)
+- **Publishers:** `X-Publisher-Key: <api_key>` (SHA-256 hashed, key rotation via POST /{id}/rotate-key)
+- **Webhooks:** Stripe signature verification (STRIPE_WEBHOOK_SECRET)
 
 ### 3.2 Endpoint Summary
 
-| Method | Path                                | Auth      | Description                      |
-| ------ | ----------------------------------- | --------- | -------------------------------- |
-| GET    | `/health`                           | None      | Service health + DB connectivity |
-| POST   | `/api/v1/sessions`                  | JWT       | Create game session              |
-| POST   | `/api/v1/rules/upload`              | JWT       | Upload rulebook PDF              |
-| GET    | `/api/v1/rules/{id}/status`         | JWT       | Poll ingestion status            |
-| POST   | `/api/v1/judge`                     | JWT       | Submit rules question            |
-| POST   | `/api/v1/judge/{id}/feedback`       | JWT       | Submit verdict feedback          |
-| GET    | `/api/v1/library`                   | JWT       | Get user's game library          |
-| POST   | `/api/v1/library/add`               | JWT       | Add game to library              |
-| DELETE | `/api/v1/library/{id}`              | JWT       | Remove game from library         |
-| PATCH  | `/api/v1/library/{id}/favorite`     | JWT       | Toggle favorite                  |
-| GET    | `/api/v1/catalog`                   | JWT       | Browse official rulesets         |
-| GET    | `/api/v1/catalog/{slug}`            | JWT       | Get official game details        |
-| POST   | `/api/v1/publisher/rulesets/upload` | API Key   | Upload official ruleset          |
-| GET    | `/api/v1/publisher/rulesets`        | API Key   | List publisher rulesets          |
-| DELETE | `/api/v1/publisher/rulesets/{id}`   | API Key   | Delete official ruleset          |
-| POST   | `/api/v1/billing/checkout`          | JWT       | Create Stripe checkout           |
-| POST   | `/api/v1/billing/portal`            | JWT       | Create Stripe portal session     |
-| POST   | `/api/v1/webhooks/stripe`           | Signature | Stripe webhook receiver          |
+| Method | Path                                 | Auth      | Description                      |
+| ------ | ------------------------------------ | --------- | -------------------------------- |
+| GET    | `/health`                            | None      | Service health + DB connectivity |
+| POST   | `/api/v1/sessions`                   | JWT       | Create game session              |
+| GET    | `/api/v1/sessions`                   | JWT       | List user sessions               |
+| POST   | `/api/v1/rules/upload`               | JWT       | Upload rulebook PDF              |
+| GET    | `/api/v1/rules/{id}/status`          | JWT       | Poll ingestion status            |
+| POST   | `/api/v1/judge`                      | JWT       | Submit rules question            |
+| POST   | `/api/v1/judge/{id}/feedback`        | JWT       | Submit verdict feedback          |
+| GET    | `/api/v1/library`                    | JWT       | Get user's game library          |
+| POST   | `/api/v1/library`                    | JWT       | Add game to library              |
+| PATCH  | `/api/v1/library/{id}`               | JWT       | Update library entry             |
+| DELETE | `/api/v1/library/{id}`               | JWT       | Remove game from library         |
+| PATCH  | `/api/v1/library/{id}/favorite`      | JWT       | Toggle favorite                  |
+| GET    | `/api/v1/users/me`                   | JWT       | Get current user profile         |
+| PATCH  | `/api/v1/users/me`                   | JWT       | Update user profile              |
+| DELETE | `/api/v1/users/me`                   | JWT       | Delete user account              |
+| GET    | `/api/v1/catalog`                    | None      | Browse official rulesets         |
+| GET    | `/api/v1/catalog/{slug}`             | None      | Get official game details        |
+| POST   | `/api/v1/publishers`                 | None      | Register publisher (returns key) |
+| GET    | `/api/v1/publishers/{id}`            | None      | Get publisher details            |
+| POST   | `/api/v1/publishers/{id}/games`      | API Key   | Add official ruleset             |
+| POST   | `/api/v1/publishers/{id}/rotate-key` | API Key   | Rotate publisher API key         |
+| POST   | `/api/v1/billing/checkout`           | JWT       | Create Stripe checkout           |
+| GET    | `/api/v1/billing/tiers`              | None      | List subscription tiers          |
+| GET    | `/api/v1/billing/subscription`       | JWT       | Get user's subscription          |
+| POST   | `/api/v1/billing/webhooks/stripe`    | Signature | Stripe webhook receiver          |
+| GET    | `/api/v1/admin/stats`                | JWT+Admin | System-wide statistics           |
+| GET    | `/api/v1/admin/users`                | JWT+Admin | List all users                   |
+| PATCH  | `/api/v1/admin/users/{id}/role`      | JWT+Admin | Update user role (USER/ADMIN)    |
+| GET    | `/api/v1/admin/publishers`           | JWT+Admin | List publishers                  |
+| GET    | `/api/v1/admin/tiers`                | JWT+Admin | Get/update subscription tiers    |
+| PUT    | `/api/v1/admin/tiers/{name}`         | JWT+Admin | Update tier limits               |
+| GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings        |
+| GET    | `/api/v1/rulings/public`             | JWT       | List public community rulings    |
+| POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                    |
+| DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling            |
+| POST   | `/api/v1/parties`                    | JWT       | Create a party                   |
+| GET    | `/api/v1/parties`                    | JWT       | List user's parties              |
+| POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                     |
+| POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                    |
+| DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)      |
+| GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members               |
 
 ### 3.3 Error Codes
 
@@ -383,3 +478,47 @@ CREATE INDEX idx_query_audit_log_created_at ON query_audit_log(created_at);
 
 - OpenTelemetry spans: API → Queue → Worker → Pinecone → LLM
 - Correlation IDs on all structured logs (`structlog`)
+
+---
+
+## 10. Provider Abstraction Layer
+
+All LLM, embedding, and reranker components use Protocol interfaces, allowing hot-swappable providers via environment variables.
+
+### 10.1 Protocol Interfaces
+
+| Protocol            | Methods                               | Implementations                   |
+| ------------------- | ------------------------------------- | --------------------------------- |
+| `LLMProvider`       | `generate()`, `generate_structured()` | OpenAI GPT-4o, Bedrock Claude 3.5 |
+| `EmbeddingProvider` | `embed()`, `embed_batch()`            | OpenAI, Bedrock Titan v2          |
+| `RerankerProvider`  | `rerank()`                            | Cohere Rerank v3, FlashRank       |
+| `VectorStore`       | `upsert()`, `query()`, `delete()`     | Pinecone Serverless               |
+| `DocumentParser`    | `parse()`                             | Docling                           |
+
+### 10.2 Configuration
+
+```env
+# Provider selection — swap via env var
+LLM_PROVIDER=openai          # openai | bedrock
+EMBEDDING_PROVIDER=openai    # openai | bedrock
+RERANKER_PROVIDER=cohere     # cohere | flashrank | none
+VECTOR_STORE_PROVIDER=pinecone
+PARSER_PROVIDER=docling
+
+# AWS Bedrock (when using bedrock providers)
+AWS_REGION=us-east-1
+BEDROCK_LLM_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
+BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
+```
+
+### 10.3 Provider Registry
+
+Singleton factory with lazy loading. Providers are instantiated on first use and cached for the application lifetime.
+
+```python
+from app.core.providers.registry import get_provider
+
+llm = get_provider("llm")           # Returns configured LLMProvider
+embedder = get_provider("embedding") # Returns configured EmbeddingProvider
+reranker = get_provider("reranker")  # Returns configured RerankerProvider
+```

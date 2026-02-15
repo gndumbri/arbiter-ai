@@ -37,6 +37,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     email_verified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     image: Mapped[str | None] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String, nullable=False, server_default="USER")  # USER | ADMIN
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

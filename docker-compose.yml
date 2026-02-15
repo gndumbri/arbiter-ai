@@ -1,4 +1,6 @@
 services:
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -27,20 +29,52 @@ services:
       timeout: 3s
       retries: 5
 
+  # ── Application ──────────────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # WHY: Override local DB/Redis URLs to use Docker service names
+      DATABASE_URL: postgresql+asyncpg://arbiter:arbiter_dev@postgres:5432/arbiter
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - uploads:/tmp/arbiter_uploads
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000/api/v1
+    depends_on:
+      - backend
+
   celery_worker:
-    build: 
+    build:
       context: ./backend
     command: celery -A app.workers.celery_app worker --loglevel=info
-    volumes:
-      - ./backend:/app
-      - uploads:/tmp/arbiter_uploads
+    env_file: .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://arbiter:arbiter_dev@postgres:5432/arbiter
-      - REDIS_URL=redis://redis:6379/0
-      # Include all other env vars needed by providers here or via .env file
+      DATABASE_URL: postgresql+asyncpg://arbiter:arbiter_dev@postgres:5432/arbiter
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - uploads:/tmp/arbiter_uploads
     depends_on:
-      - redis
-      - postgres
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
