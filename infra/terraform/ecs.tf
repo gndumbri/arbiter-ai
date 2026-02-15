@@ -87,13 +87,14 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
-      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" }
+      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
+      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }
     ]
 
     secrets = [
       { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:AUTH_SECRET::" },
-      { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
-      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }
+      { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" }
+
     ]
 
     logConfiguration = {
