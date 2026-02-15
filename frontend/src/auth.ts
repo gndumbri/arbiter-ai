@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
-// import { DrizzleAdapter } from "@auth/drizzle-adapter";
-// import { db } from "@/db";
-// import { accounts, users, verificationTokens } from "@/db/auth-schema";
+import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { db } from "@/db";
+import { accounts, users, verificationTokens } from "@/db/auth-schema";
 import { createHmac } from "crypto";
 import Email from "next-auth/providers/email";
 import Credentials from "next-auth/providers/credentials";
@@ -39,12 +39,12 @@ function createBackendAccessToken(payload: {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  // adapter: DrizzleAdapter(db, {
-  //   usersTable: users,
-  //   accountsTable: accounts,
-  //   // sessionsTable not needed for JWT strategy
-  //   verificationTokensTable: verificationTokens,
-  // }),
+  adapter: DrizzleAdapter(db, {
+    usersTable: users,
+    accountsTable: accounts,
+    // sessionsTable not needed for JWT strategy
+    verificationTokensTable: verificationTokens,
+  }),
   session: { strategy: "jwt" },
   callbacks: {
     ...authConfig.callbacks,

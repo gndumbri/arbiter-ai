@@ -57,6 +57,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "app_startup",
         env=get_settings().app_env,
         mode=get_settings().app_mode,
+        llm_provider=get_settings().llm_provider,
+        embedding_provider=get_settings().embedding_provider,
+        vector_store_provider=get_settings().vector_store_provider,
+        reranker_provider=get_settings().reranker_provider,
     )
     yield
     logger.info("app_shutdown")
