@@ -71,7 +71,7 @@ def test_ingest_ruleset_task(
     mock_pipeline.process = AsyncMock(
         return_value=MagicMock(chunk_count=10, namespace="ns", file_hash="hash")
     )
-    
+
     # Mock get_async_session to return an async iterator
     mock_db = AsyncMock()
     mock_get_session.return_value.__aiter__.return_value = [mock_db]
@@ -86,7 +86,7 @@ def test_ingest_ruleset_task(
         source_type="BASE",
         source_priority=0,
     )
-    
+
     # Verify pipeline called
     mock_pipeline_cls.assert_called_once()
-    mock_pipeline.process.assert_called_once() 
+    mock_pipeline.process.assert_called_once()

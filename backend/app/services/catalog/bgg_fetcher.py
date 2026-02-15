@@ -11,12 +11,11 @@ Rate limit: BGG enforces ~1 req/5s; we add a 6s delay.
 
 from __future__ import annotations
 
-import time
 import uuid
 
 import requests
 import structlog
-from defusedxml import ElementTree as ET
+from defusedxml import ElementTree
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -60,7 +59,7 @@ def _fetch_hot_list() -> list[dict]:
         logger.warning("bgg_fetch_failed", error=str(e))
         return []
 
-    root = ET.fromstring(resp.content)
+    root = ElementTree.fromstring(resp.content)
     games = []
 
     for item in root.findall("item"):

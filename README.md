@@ -92,8 +92,12 @@ docker compose up --build
 | `make migrate`  | Run Alembic DB migrations            |
 | `make backend`  | Start FastAPI dev server (port 8000) |
 | `make frontend` | Start Next.js dev server (port 3000) |
-| `make test`     | Run backend pytest suite             |
-| `make lint`     | Run ruff + mypy                      |
+| `make test`     | Run backend + frontend test suites   |
+| `make test-backend` | Run backend pytest suite         |
+| `make test-frontend` | Run frontend Vitest suite       |
+| `make lint`     | Run backend + frontend linters       |
+| `make lint-backend` | Run ruff + targeted mypy checks  |
+| `make lint-frontend` | Run frontend eslint            |
 | `make dev`      | Start Docker + print instructions    |
 
 ## App Modes
@@ -171,15 +175,21 @@ With the backend running, visit:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-The API has 43 endpoints across 12 route modules. See [spec.md](spec.md) for the full routes table.
+The API exposes user, catalog, adjudication, billing, and admin route modules. See [spec.md](spec.md) for the full routes table.
 
 ## Testing
 
 ```bash
-# Backend (73 tests)
+# Full quality gate (backend + frontend)
 make test
 
-# Linting
+# Backend only
+make test-backend
+
+# Frontend only
+make test-frontend
+
+# Full lint gate (backend + frontend)
 make lint
 ```
 
@@ -193,18 +203,19 @@ make lint
 │   │   ├── api/
 │   │   │   ├── deps.py       # Auth (NextAuth JWT), DB, Redis injection
 │   │   │   ├── middleware.py  # RequestID, logging, error handling
-│   │   │   └── routes/       # 12 route modules (43 endpoints)
+│   │   │   └── routes/       # Route modules (API + mock parity)
 │   │   ├── models/
 │   │   │   ├── tables.py     # SQLAlchemy ORM (10 tables)
 │   │   │   ├── schemas.py    # Pydantic request/response schemas
 │   │   │   └── database.py   # Async engine + session factory
 │   │   └── core/             # Ingestion, retrieval, judge engine
 │   ├── alembic/              # DB migrations
-│   └── tests/                # pytest suite (73 tests)
+│   └── tests/                # pytest suite
 ├── frontend/
 │   └── src/
 │       ├── app/              # Next.js App Router (14 routes)
 │       ├── lib/api.ts        # Typed API client (30 methods)
+│       ├── lib/api.test.ts   # Frontend API client regression tests
 │       └── components/       # Shadcn UI components
 ├── docs/
 │   └── aws-deployment.md     # AWS deployment guide

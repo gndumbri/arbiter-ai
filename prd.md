@@ -40,6 +40,17 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Mock library endpoints now persist in-memory add/remove/favorite changes during runtime for realistic frontend testing.
 - Shelf dashboard now surfaces claimed library games so "added from Armory" state is visible in the main view.
 - AWS deployment now includes a repo-managed ECS backend task-definition template (`infra/ecs/backend-task-definition.json`) to prevent secret-key drift.
+- Frontend API client now correctly handles `204/205` no-content responses, preventing false JSON parse failures on delete routes.
+- Frontend regression tests now cover API fetcher success/error/no-content behavior (`frontend/src/lib/api.test.ts`).
+- Mock API parity was expanded for `users`, `rulings`, `parties`, and `admin` endpoints to match dashboard behavior in `APP_MODE=mock`.
+- Backend lint baseline is now clean (`ruff` on `app/` and `tests/`), and flaky async cleanup warnings are filtered in pytest config.
+- `make lint` is now self-contained (no local mypy install required) and runs targeted type checks on critical config/environment modules.
+- Root quality gates now include frontend checks by default (`make test` runs pytest + Vitest; `make lint` runs backend + frontend lint).
+- Judge quality flow was upgraded with stronger grounding prompts, robust JSON normalization, and citation-chunk alignment to improve reliability under real gameplay queries.
+- Agent quality flow now applies persona + custom system instructions directly in adjudication while preserving non-overridable safety/grounding constraints.
+- Judge flow now includes recent-turn conversation context for higher-quality follow-up rulings (without relaxing citation grounding rules).
+- Ingestion classification prompt now uses structured JSON + confidence gating to reduce non-rulebook acceptance and improve corpus quality.
+- New regression tests now cover adjudication prompt flow and ingestion classifier parsing (`backend/tests/unit/test_adjudication.py`, `backend/tests/unit/test_ingestion_classification.py`).
 
 ### F1: Game Library (Dashboard)
 

@@ -41,6 +41,11 @@ export interface JudgeVerdict {
   model: string;
 }
 
+export interface JudgeHistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface Ruleset {
   id: string;
   game_name: string;
@@ -193,7 +198,17 @@ export async function fetcher<T>(url: string, options?: RequestInit): Promise<T>
     throw new Error(error.detail || `Error ${res.status}`);
   }
 
-  return res.json();
+  // 204/205 responses intentionally have no body.
+  if (res.status === 204 || res.status === 205) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 /**
@@ -259,7 +274,12 @@ export const api = {
   },
 
   // ─── Judge ──────────────────────────────────────────────────────────────────
-  submitQuery: async (data: { session_id: string; query: string; ruleset_ids?: string[] }) => {
+  submitQuery: async (data: {
+    session_id: string;
+    query: string;
+    ruleset_ids?: string[];
+    history?: JudgeHistoryTurn[];
+  }) => {
     return fetcher<JudgeVerdict>("/judge", {
       method: "POST",
       body: JSON.stringify(data),

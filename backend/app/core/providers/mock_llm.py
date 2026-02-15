@@ -91,9 +91,39 @@ class MockLLMProvider:
         from app.mock.factory import create_mock_verdict
         verdict = create_mock_verdict(user_query)
 
-        # WHY: If response_format asks for JSON, wrap the verdict in JSON.
-        # The adjudication engine uses JSON mode to parse verdicts.
-        content = json.dumps(verdict) if response_format else verdict["verdict"]
+        system_prompt = next((m.content for m in messages if m.role == "system"), "")
+        system_lower = system_prompt.lower()
+        user_lower = user_query.lower()
+
+        # Mock query expansion payload for adjudication Step 1.
+        if "optimize retrieval queries" in system_lower:
+            expansion = {
+                "expanded_query": user_query,
+                "keywords": ["turn order", "timing", "rule interaction"],
+                "sub_queries": None,
+            }
+            content = json.dumps(expansion)
+        # Mock rulebook classification payload for ingestion Layer 2.
+        elif "strict classifier for tabletop game rulebooks" in system_lower:
+            looks_like_rulebook = any(
+                token in user_lower
+                for token in ("setup", "turn", "players", "victory", "phase", "rule")
+            )
+            classification = {
+                "is_rulebook": looks_like_rulebook,
+                "confidence": 0.85 if looks_like_rulebook else 0.2,
+                "reason": (
+                    "Contains gameplay structure and rule terminology."
+                    if looks_like_rulebook
+                    else "Missing gameplay-rule structure."
+                ),
+                "signals": ["mock-classifier"],
+            }
+            content = json.dumps(classification)
+        else:
+            # WHY: If response_format asks for JSON, wrap the verdict in JSON.
+            # The adjudication engine uses JSON mode to parse verdicts.
+            content = json.dumps(verdict) if response_format else verdict["verdict"]
 
         return LLMResponse(
             content=content,

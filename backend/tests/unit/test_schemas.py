@@ -38,6 +38,16 @@ def test_judge_query_too_long():
         JudgeQuery(session_id=uuid.uuid4(), query="x" * 501)
 
 
+def test_judge_query_history_too_many_turns_rejected():
+    """History exceeding max turn count should be rejected."""
+    with pytest.raises(ValidationError):
+        JudgeQuery(
+            session_id=uuid.uuid4(),
+            query="Follow-up question",
+            history=[{"role": "user", "content": "x"}] * 9,
+        )
+
+
 def test_feedback_valid_values():
     """Feedback must be 'up' or 'down'."""
     assert FeedbackSubmit(feedback="up").feedback == "up"

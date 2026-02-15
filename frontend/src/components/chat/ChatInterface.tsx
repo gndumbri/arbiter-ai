@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./MessageBubble";
 import { CitationViewer } from "./CitationViewer";
-import { api, JudgeVerdict, VerdictCitation } from "@/lib/api";
+import { api, JudgeHistoryTurn, JudgeVerdict, VerdictCitation } from "@/lib/api";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import useSWR from "swr";
@@ -21,6 +21,17 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   verdict?: JudgeVerdict;
+}
+
+function buildJudgeHistory(messages: Message[]): JudgeHistoryTurn[] {
+  return messages
+    .filter((message) => message.id !== "welcome")
+    .slice(-6)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim().slice(0, 1000),
+    }))
+    .filter((turn) => turn.content.length > 0);
 }
 
 export function ChatInterface({ sessionId }: ChatInterfaceProps) {
@@ -68,9 +79,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
+      const history = buildJudgeHistory([...messages, userMsg]);
       const response = await api.submitQuery({
         session_id: sessionId,
         query: userMsg.content,
+        history,
       }) as JudgeVerdict;
 
       const aiMsg: Message = {
@@ -107,9 +120,10 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       role: "user",
       content: question,
     };
+    const history = buildJudgeHistory([...messages, userMsg]);
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
-    api.submitQuery({ session_id: sessionId, query: question })
+    api.submitQuery({ session_id: sessionId, query: question, history })
       .then((response) => {
         const aiMsg: Message = {
           id: (Date.now() + 1).toString(),

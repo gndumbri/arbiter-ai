@@ -128,10 +128,12 @@ class ProviderRegistry:
         # should never fail to import. We still wrap in try/except for
         # consistency with the pattern above.
         try:
-            from app.core.providers import mock_llm  # noqa: F401
-            from app.core.providers import mock_embedding  # noqa: F401
-            from app.core.providers import mock_vector_store  # noqa: F401
-            from app.core.providers import mock_reranker  # noqa: F401
+            from app.core.providers import (  # noqa: F401
+                mock_embedding,
+                mock_llm,
+                mock_reranker,
+                mock_vector_store,
+            )
         except ImportError:
             logger.debug("mock providers not available")
 

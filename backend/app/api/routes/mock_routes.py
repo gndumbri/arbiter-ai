@@ -17,7 +17,12 @@ Depends on: mock/fixtures.py, mock/factory.py, core/environment.py
 
 from __future__ import annotations
 
+import base64
+import copy
+import json
 import logging
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -38,7 +43,6 @@ from app.mock.fixtures import (
     MOCK_PARTIES,
     MOCK_PARTY_MEMBERS,
     MOCK_RULESETS,
-    MOCK_RULING_GAMES,
     MOCK_RULINGS,
     MOCK_SESSIONS,
     MOCK_SUBSCRIPTION,
@@ -49,10 +53,17 @@ from app.mock.fixtures import (
 logger = logging.getLogger(__name__)
 
 MOCK_LIBRARY_STATE = [dict(entry) for entry in MOCK_LIBRARY]
+MOCK_SESSIONS_STATE = [dict(entry) for entry in MOCK_SESSIONS]
+MOCK_AGENTS_STATE = [dict(entry) for entry in MOCK_AGENTS]
+MOCK_RULESETS_STATE = [dict(entry) for entry in MOCK_RULESETS]
+MOCK_RULINGS_STATE = [copy.deepcopy(entry) for entry in MOCK_RULINGS]
+MOCK_PARTIES_STATE = [dict(entry) for entry in MOCK_PARTIES]
 MOCK_PARTY_MEMBERS_STATE = {
     party_id: [dict(member) for member in members]
     for party_id, members in MOCK_PARTY_MEMBERS.items()
 }
+MOCK_PARTY_SHARES_STATE: dict[str, list[dict[str, str]]] = {}
+MOCK_USER_PROFILE_STATE = dict(MOCK_CURRENT_USER)
 
 
 def _lookup_mock_user(user_id: str) -> dict[str, Any] | None:
@@ -60,7 +71,23 @@ def _lookup_mock_user(user_id: str) -> dict[str, Any] | None:
     for user in MOCK_USERS.values():
         if user["id"] == user_id:
             return user
+    if MOCK_USER_PROFILE_STATE.get("id") == user_id:
+        return MOCK_USER_PROFILE_STATE
     return None
+
+
+def _get_party_or_404(party_id: str) -> dict[str, Any]:
+    for party in MOCK_PARTIES_STATE:
+        if party["id"] == party_id:
+            return party
+    raise HTTPException(status_code=404, detail="Party not found")
+
+
+def _recount_party_members(party_id: str) -> int:
+    member_count = len(MOCK_PARTY_MEMBERS_STATE.get(party_id, []))
+    party = _get_party_or_404(party_id)
+    party["member_count"] = member_count
+    return member_count
 
 
 # ─── Request Schemas ──────────────────────────────────────────────────────────
@@ -82,6 +109,7 @@ class MockJudgeQuery(BaseModel):
     query: str
     game_name: str | None = None
     ruleset_ids: list[str] | None = None
+    history: list[dict[str, str]] | None = None
 
 
 class MockFeedbackRequest(BaseModel):
@@ -104,6 +132,44 @@ class MockRulingSave(BaseModel):
     session_id: str | None = None
     privacy_level: str = "PRIVATE"
     tags: list[str] | None = None
+
+
+class MockRulingUpdate(BaseModel):
+    """Update a saved ruling."""
+    tags: list[str] | None = None
+    game_name: str | None = None
+    privacy_level: str | None = None
+
+
+class MockCreatePartyRequest(BaseModel):
+    """Create party request."""
+    name: str
+
+
+class MockJoinViaLinkRequest(BaseModel):
+    """Join party via token request."""
+    token: str
+
+
+class MockTransferOwnershipRequest(BaseModel):
+    """Transfer party ownership request."""
+    new_owner_id: str
+
+
+class MockUpdateGameSharesRequest(BaseModel):
+    """Update shared games request."""
+    game_names: list[str]
+
+
+class MockUpdateProfileRequest(BaseModel):
+    """Update profile fields."""
+    name: str | None = None
+    default_ruling_privacy: str | None = None
+
+
+class MockCheckoutRequest(BaseModel):
+    """Create checkout request."""
+    tier: str = "PRO"
 
 
 # ─── Router Setup ─────────────────────────────────────────────────────────────
@@ -155,7 +221,7 @@ async def mock_get_current_user():
         Mock user dict with id, email, name, role, tier.
     """
     logger.debug("Mock: GET /users/me → returning mock user '%s'", MOCK_CURRENT_USER["email"])
-    return MOCK_CURRENT_USER
+    return MOCK_USER_PROFILE_STATE
 
 
 @api_router.get("/users/me/settings", tags=["users"])
@@ -166,10 +232,32 @@ async def mock_get_user_settings():
         Dict with user preferences (default_ruling_privacy, email_notifications).
     """
     return {
-        "default_ruling_privacy": MOCK_CURRENT_USER.get("default_ruling_privacy", "PRIVATE"),
+        "default_ruling_privacy": MOCK_USER_PROFILE_STATE.get("default_ruling_privacy", "PRIVATE"),
         "email_notifications_enabled": True,
         "preferred_persona": "Standard Judge",
     }
+
+
+@api_router.patch("/users/me", tags=["users"])
+async def mock_update_user_profile(body: MockUpdateProfileRequest):
+    """Update the mock user's profile."""
+    if body.name is not None:
+        MOCK_USER_PROFILE_STATE["name"] = body.name
+    if body.default_ruling_privacy is not None:
+        MOCK_USER_PROFILE_STATE["default_ruling_privacy"] = body.default_ruling_privacy
+    return {
+        "id": MOCK_USER_PROFILE_STATE["id"],
+        "email": MOCK_USER_PROFILE_STATE["email"],
+        "name": MOCK_USER_PROFILE_STATE.get("name"),
+        "role": MOCK_USER_PROFILE_STATE.get("role", "USER"),
+        "default_ruling_privacy": MOCK_USER_PROFILE_STATE.get("default_ruling_privacy", "PRIVATE"),
+    }
+
+
+@api_router.delete("/users/me", status_code=204, tags=["users"])
+async def mock_delete_user_profile():
+    """Delete account in mock mode (no-op, returns 204)."""
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -191,7 +279,7 @@ async def mock_list_sessions(
     Returns:
         List of mock session dicts.
     """
-    sessions = MOCK_SESSIONS
+    sessions = MOCK_SESSIONS_STATE
     if active_only:
         sessions = [s for s in sessions if "expired" not in s.get("expires_at", "")]
     logger.debug("Mock: GET /sessions → returning %d sessions", len(sessions))
@@ -209,6 +297,20 @@ async def mock_create_session(body: MockSessionCreate):
         A freshly generated mock session dict.
     """
     session = create_mock_session(body.game_name)
+    # Keep in-memory state in sync so dashboard/session flows reflect new sessions.
+    MOCK_SESSIONS_STATE.insert(0, dict(session))
+    MOCK_AGENTS_STATE.insert(
+        0,
+        {
+            "id": session["id"],
+            "game_name": session["game_name"],
+            "persona": body.persona or "Standard Judge",
+            "system_prompt_override": body.system_prompt_override,
+            "created_at": session["created_at"],
+            "active_ruleset_ids": [],
+            "active": True,
+        },
+    )
     logger.info("Mock: POST /sessions → created session for '%s'", body.game_name)
     return session
 
@@ -413,7 +515,7 @@ async def mock_list_rulings(
     Returns:
         List of mock ruling dicts.
     """
-    rulings = MOCK_RULINGS
+    rulings = MOCK_RULINGS_STATE
     if game_name:
         rulings = [r for r in rulings if r["game_name"] == game_name]
     if privacy:
@@ -429,7 +531,16 @@ async def mock_ruling_games():
     Returns:
         List of {game_name, count} dicts.
     """
-    return MOCK_RULING_GAMES
+    counts: dict[str, int] = {}
+    for ruling in MOCK_RULINGS_STATE:
+        game_name = ruling.get("game_name")
+        if not game_name:
+            continue
+        counts[game_name] = counts.get(game_name, 0) + 1
+    return [
+        {"game_name": game, "count": count}
+        for game, count in sorted(counts.items(), key=lambda item: item[0].lower())
+    ]
 
 
 @api_router.post("/rulings", status_code=201, tags=["rulings"])
@@ -443,8 +554,27 @@ async def mock_save_ruling(body: MockRulingSave):
         A freshly generated ruling dict.
     """
     ruling = create_mock_ruling(body.query, body.game_name, body.privacy_level)
+    ruling["tags"] = body.tags or []
+    ruling["session_id"] = body.session_id
+    ruling["verdict_json"] = body.verdict_json or ruling["verdict_json"]
+    MOCK_RULINGS_STATE.insert(0, ruling)
     logger.info("Mock: POST /rulings → saved ruling for '%s'", body.game_name)
     return ruling
+
+
+@api_router.get("/rulings/public", tags=["rulings"])
+async def mock_list_public_rulings():
+    """List public rulings."""
+    return [r for r in MOCK_RULINGS_STATE if r.get("privacy_level") == "PUBLIC"]
+
+
+@api_router.get("/rulings/party", tags=["rulings"])
+async def mock_list_party_rulings(game_name: str | None = None):
+    """List party-visible rulings."""
+    rulings = [r for r in MOCK_RULINGS_STATE if r.get("privacy_level") == "PARTY"]
+    if game_name:
+        rulings = [r for r in rulings if r.get("game_name") == game_name]
+    return rulings
 
 
 @api_router.get("/rulings/{ruling_id}", tags=["rulings"])
@@ -460,9 +590,25 @@ async def mock_get_ruling(ruling_id: str):
     Raises:
         HTTPException: 404 if not found.
     """
-    for ruling in MOCK_RULINGS:
+    for ruling in MOCK_RULINGS_STATE:
         if ruling["id"] == ruling_id:
             return ruling
+    raise HTTPException(status_code=404, detail="Ruling not found in mock data.")
+
+
+@api_router.patch("/rulings/{ruling_id}", tags=["rulings"])
+async def mock_update_ruling(ruling_id: str, body: MockRulingUpdate):
+    """Update a mock ruling's editable fields."""
+    for ruling in MOCK_RULINGS_STATE:
+        if ruling["id"] != ruling_id:
+            continue
+        if body.tags is not None:
+            ruling["tags"] = body.tags
+        if body.game_name is not None:
+            ruling["game_name"] = body.game_name
+        if body.privacy_level is not None:
+            ruling["privacy_level"] = body.privacy_level
+        return ruling
     raise HTTPException(status_code=404, detail="Ruling not found in mock data.")
 
 
@@ -476,8 +622,12 @@ async def mock_delete_ruling(ruling_id: str):
     Returns:
         Confirmation dict.
     """
-    logger.info("Mock: DELETE /rulings/%s → deleted", ruling_id)
-    return {"status": "deleted", "id": ruling_id}
+    for idx, ruling in enumerate(MOCK_RULINGS_STATE):
+        if ruling["id"] == ruling_id:
+            del MOCK_RULINGS_STATE[idx]
+            logger.info("Mock: DELETE /rulings/%s → deleted", ruling_id)
+            return {"status": "deleted", "id": ruling_id}
+    raise HTTPException(status_code=404, detail="Ruling not found in mock data.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -492,8 +642,58 @@ async def mock_list_parties():
     Returns:
         List of mock party dicts.
     """
-    logger.debug("Mock: GET /parties → returning %d parties", len(MOCK_PARTIES))
-    return MOCK_PARTIES
+    for party in MOCK_PARTIES_STATE:
+        _recount_party_members(party["id"])
+    logger.debug("Mock: GET /parties → returning %d parties", len(MOCK_PARTIES_STATE))
+    return MOCK_PARTIES_STATE
+
+
+@api_router.post("/parties", status_code=201, tags=["parties"])
+async def mock_create_party(body: MockCreatePartyRequest):
+    """Create a new mock party and make current user the owner."""
+    now = datetime.now(UTC).isoformat()
+    party_id = str(uuid.uuid4())
+    new_party = {
+        "id": party_id,
+        "name": body.name.strip() or "New Guild",
+        "owner_id": MOCK_CURRENT_USER["id"],
+        "member_count": 1,
+        "created_at": now,
+    }
+    MOCK_PARTIES_STATE.insert(0, new_party)
+    MOCK_PARTY_MEMBERS_STATE[party_id] = [
+        {
+            "user_id": MOCK_CURRENT_USER["id"],
+            "role": "OWNER",
+            "joined_at": now,
+        }
+    ]
+    return new_party
+
+
+@api_router.post("/parties/join-via-link", status_code=201, tags=["parties"])
+async def mock_join_via_link(body: MockJoinViaLinkRequest):
+    """Join a party by mock invite token."""
+    party_id = None
+    token_parts = body.token.split(".")
+    if len(token_parts) >= 2:
+        try:
+            payload_part = token_parts[1]
+            padded = payload_part + "=" * ((4 - len(payload_part) % 4) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(padded).decode())
+            if isinstance(payload, dict):
+                party_id = payload.get("party_id")
+        except Exception:
+            party_id = None
+
+    if not party_id:
+        # Fallback for non-decodable mock tokens.
+        party_id = MOCK_PARTIES_STATE[0]["id"] if MOCK_PARTIES_STATE else None
+
+    if not party_id:
+        raise HTTPException(status_code=404, detail="Party not found")
+
+    return await mock_join_party(party_id)
 
 
 @api_router.get("/parties/{party_id}", tags=["parties"])
@@ -509,11 +709,10 @@ async def mock_get_party(party_id: str):
     Raises:
         HTTPException: 404 if not found.
     """
-    for party in MOCK_PARTIES:
-        if party["id"] == party_id:
-            members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
-            return {**party, "members": members}
-    raise HTTPException(status_code=404, detail="Party not found in mock data.")
+    party = _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    _recount_party_members(party_id)
+    return {**party, "members": members}
 
 
 @api_router.get("/parties/{party_id}/members", tags=["parties"])
@@ -542,6 +741,142 @@ async def mock_list_party_members(party_id: str):
     return enriched
 
 
+@api_router.post("/parties/{party_id}/join", status_code=201, tags=["parties"])
+async def mock_join_party(party_id: str):
+    """Join a mock party as a member."""
+    _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.setdefault(party_id, [])
+    if any(m["user_id"] == MOCK_CURRENT_USER["id"] for m in members):
+        raise HTTPException(status_code=409, detail="Already a member")
+
+    members.append(
+        {
+            "user_id": MOCK_CURRENT_USER["id"],
+            "role": "MEMBER",
+            "joined_at": datetime.now(UTC).isoformat(),
+        }
+    )
+    _recount_party_members(party_id)
+    return {"party_id": party_id, "status": "joined"}
+
+
+@api_router.post("/parties/{party_id}/leave", status_code=200, tags=["parties"])
+async def mock_leave_party(party_id: str):
+    """Leave a mock party."""
+    party = _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    target = next((m for m in members if m["user_id"] == MOCK_CURRENT_USER["id"]), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Not a member")
+    if party["owner_id"] == MOCK_CURRENT_USER["id"]:
+        raise HTTPException(status_code=400, detail="Owners cannot leave. Transfer ownership first.")
+
+    members.remove(target)
+    _recount_party_members(party_id)
+    return {"party_id": party_id, "status": "left"}
+
+
+@api_router.delete("/parties/{party_id}", status_code=204, tags=["parties"])
+async def mock_delete_party(party_id: str):
+    """Delete a mock party (owner only)."""
+    party = _get_party_or_404(party_id)
+    if party["owner_id"] != MOCK_CURRENT_USER["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can delete a party")
+
+    MOCK_PARTIES_STATE[:] = [p for p in MOCK_PARTIES_STATE if p["id"] != party_id]
+    MOCK_PARTY_MEMBERS_STATE.pop(party_id, None)
+    MOCK_PARTY_SHARES_STATE.pop(party_id, None)
+    return None
+
+
+@api_router.get("/parties/{party_id}/invite", tags=["parties"])
+async def mock_create_invite_link(party_id: str):
+    """Create a mock invite link with an embedded party payload."""
+    party = _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    if not any(m["user_id"] == MOCK_CURRENT_USER["id"] for m in members):
+        raise HTTPException(status_code=403, detail="Not a member of this party")
+
+    payload = {
+        "party_id": party_id,
+        "party_name": party["name"],
+        "invited_by": MOCK_CURRENT_USER["id"],
+    }
+    payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    token = f"mock.{payload_b64}.sig"
+    return {
+        "invite_url": f"http://localhost:3000/invite/{token}",
+        "expires_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@api_router.delete("/parties/{party_id}/members/{user_id}", status_code=200, tags=["parties"])
+async def mock_remove_member(party_id: str, user_id: str):
+    """Remove a member from a mock party (owner only)."""
+    party = _get_party_or_404(party_id)
+    if party["owner_id"] != MOCK_CURRENT_USER["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can remove members")
+    if user_id == MOCK_CURRENT_USER["id"]:
+        raise HTTPException(status_code=400, detail="Use the leave endpoint to remove yourself")
+
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    target = next((m for m in members if m["user_id"] == user_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="User is not a member")
+    members.remove(target)
+    _recount_party_members(party_id)
+    return {"status": "removed", "user_id": user_id}
+
+
+@api_router.patch("/parties/{party_id}/owner", status_code=200, tags=["parties"])
+async def mock_transfer_ownership(party_id: str, body: MockTransferOwnershipRequest):
+    """Transfer ownership in a mock party."""
+    party = _get_party_or_404(party_id)
+    if party["owner_id"] != MOCK_CURRENT_USER["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can transfer ownership")
+
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    target = next((m for m in members if m["user_id"] == body.new_owner_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="New owner must be a member of the party")
+
+    for member in members:
+        member["role"] = "OWNER" if member["user_id"] == body.new_owner_id else "MEMBER"
+    party["owner_id"] = body.new_owner_id
+    return {"status": "transferred", "new_owner_id": body.new_owner_id}
+
+
+@api_router.get("/parties/{party_id}/game-shares", tags=["parties"])
+async def mock_list_game_shares(party_id: str):
+    """List game shares for a mock party."""
+    _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    if not any(m["user_id"] == MOCK_CURRENT_USER["id"] for m in members):
+        raise HTTPException(status_code=403, detail="Not a member of this party")
+    return MOCK_PARTY_SHARES_STATE.get(party_id, [])
+
+
+@api_router.put("/parties/{party_id}/game-shares", status_code=200, tags=["parties"])
+async def mock_update_game_shares(party_id: str, body: MockUpdateGameSharesRequest):
+    """Replace the current user's shared game list for a party."""
+    _get_party_or_404(party_id)
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
+    if not any(m["user_id"] == MOCK_CURRENT_USER["id"] for m in members):
+        raise HTTPException(status_code=403, detail="Not a member of this party")
+
+    existing = [
+        share
+        for share in MOCK_PARTY_SHARES_STATE.get(party_id, [])
+        if share["user_id"] != MOCK_CURRENT_USER["id"]
+    ]
+    existing.extend(
+        {"game_name": game_name, "user_id": MOCK_CURRENT_USER["id"]}
+        for game_name in body.game_names
+    )
+    MOCK_PARTY_SHARES_STATE[party_id] = existing
+    return {"status": "updated", "game_count": len(body.game_names)}
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # BILLING
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -568,13 +903,13 @@ async def mock_list_tiers():
 
 
 @api_router.post("/billing/checkout", tags=["billing"])
-async def mock_create_checkout():
+async def mock_create_checkout(body: MockCheckoutRequest):
     """Simulate Stripe checkout session creation.
 
     Returns:
         Mock checkout URL (doesn't actually redirect to Stripe).
     """
-    logger.info("Mock: POST /billing/checkout → returning mock checkout URL")
+    logger.info("Mock: POST /billing/checkout → returning mock checkout URL for tier=%s", body.tier)
     return {
         "checkout_url": "https://checkout.stripe.com/mock-session",
         "session_id": "cs_mock_123456",
@@ -594,6 +929,70 @@ async def mock_create_portal():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ADMIN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@api_router.get("/admin/stats", tags=["admin"])
+async def mock_admin_stats():
+    """Return aggregate mock stats for admin dashboard."""
+    return {
+        "total_users": len(MOCK_USERS),
+        "total_sessions": len(MOCK_SESSIONS_STATE),
+        "total_queries": len(MOCK_RULINGS_STATE),
+        "total_rulesets": len(MOCK_RULESETS_STATE),
+        "total_publishers": len({entry["publisher_name"] for entry in MOCK_CATALOG}),
+    }
+
+
+@api_router.get("/admin/users", tags=["admin"])
+async def mock_admin_users():
+    """List mock users for admin management."""
+    now = datetime.now(UTC).isoformat()
+    return [
+        {
+            "id": user["id"],
+            "email": user["email"],
+            "name": user.get("name"),
+            "role": user.get("role", "USER"),
+            "created_at": now,
+        }
+        for user in MOCK_USERS.values()
+    ]
+
+
+@api_router.get("/admin/publishers", tags=["admin"])
+async def mock_admin_publishers():
+    """List synthetic publishers derived from mock catalog."""
+    now = datetime.now(UTC).isoformat()
+    unique_publishers = sorted({entry["publisher_name"] for entry in MOCK_CATALOG})
+    return [
+        {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"mock-publisher-{name.lower()}")),
+            "name": name,
+            "slug": name.lower().replace(" ", "-"),
+            "contact_email": f"contact@{name.lower().replace(' ', '')}.local",
+            "verified": True,
+            "created_at": now,
+        }
+        for name in unique_publishers
+    ]
+
+
+@api_router.get("/admin/tiers", tags=["admin"])
+async def mock_admin_tiers():
+    """List mock subscription tiers for admin view."""
+    return [
+        {
+            "id": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"mock-tier-{tier['name'].lower()}")),
+            "name": tier["name"],
+            "daily_query_limit": tier["daily_query_limit"],
+        }
+        for tier in MOCK_TIERS
+    ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # AGENTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -605,8 +1004,8 @@ async def mock_list_agents():
     Returns:
         List of mock agent dicts.
     """
-    logger.debug("Mock: GET /agents → returning %d agents", len(MOCK_AGENTS))
-    return MOCK_AGENTS
+    logger.debug("Mock: GET /agents → returning %d agents", len(MOCK_AGENTS_STATE))
+    return MOCK_AGENTS_STATE
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -624,7 +1023,7 @@ async def mock_list_session_rulesets(session_id: str):
     Returns:
         List of mock ruleset dicts filtered by session_id.
     """
-    rulesets = [r for r in MOCK_RULESETS if r.get("session_id") == session_id]
+    rulesets = [r for r in MOCK_RULESETS_STATE if r.get("session_id") == session_id]
     return rulesets
 
 
@@ -639,10 +1038,21 @@ async def mock_upload_ruleset(session_id: str):
     Returns:
         Mock ruleset dict with PROCESSING status.
     """
-    import uuid as _uuid_mod
-
     logger.info("Mock: POST /sessions/%s/rulesets/upload → simulated", session_id)
-    ruleset_id = str(_uuid_mod.uuid4())
+    ruleset_id = str(uuid.uuid4())
+    ruleset = {
+        "id": ruleset_id,
+        "game_name": next(
+            (s.get("game_name") for s in MOCK_SESSIONS_STATE if s.get("id") == session_id),
+            "Unknown Game",
+        ),
+        "status": "PROCESSING",
+        "created_at": datetime.now(UTC).isoformat(),
+        "chunk_count": 0,
+        "filename": "uploaded-ruleset.pdf",
+        "session_id": session_id,
+    }
+    MOCK_RULESETS_STATE.insert(0, ruleset)
     return {
         "ruleset_id": ruleset_id,
         "status": "PROCESSING",
@@ -655,13 +1065,13 @@ async def mock_upload_ruleset(session_id: str):
 @api_router.get("/rulesets", tags=["sessions"])
 async def mock_list_rulesets():
     """List all mock rulesets (global endpoint)."""
-    return MOCK_RULESETS
+    return MOCK_RULESETS_STATE
 
 
 @api_router.get("/rulesets/{ruleset_id}/status", tags=["sessions"])
 async def mock_ruleset_status(ruleset_id: str):
     """Get status for a mock ruleset by ID."""
-    for ruleset in MOCK_RULESETS:
+    for ruleset in MOCK_RULESETS_STATE:
         if ruleset.get("id") == ruleset_id:
             return {
                 "ruleset_id": ruleset["id"],

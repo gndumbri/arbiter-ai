@@ -78,6 +78,19 @@ async def test_mock_get_current_user(mock_client: AsyncClient):
     assert data["tier"] == "PRO"
 
 
+@pytest.mark.anyio
+async def test_mock_update_user_profile(mock_client: AsyncClient):
+    """Mock PATCH /users/me should update profile fields."""
+    response = await mock_client.patch(
+        "/api/v1/users/me",
+        json={"name": "Updated Wizard", "default_ruling_privacy": "PUBLIC"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Updated Wizard"
+    assert data["default_ruling_privacy"] == "PUBLIC"
+
+
 # ─── Sessions ─────────────────────────────────────────────────────────────────
 
 
@@ -230,6 +243,18 @@ async def test_mock_list_rulings(mock_client: AsyncClient):
     assert "verdict_json" in data[0]
 
 
+@pytest.mark.anyio
+async def test_mock_list_public_and_party_rulings(mock_client: AsyncClient):
+    """Mock /rulings/public and /rulings/party should filter by privacy."""
+    public_resp = await mock_client.get("/api/v1/rulings/public")
+    assert public_resp.status_code == 200
+    assert all(r["privacy_level"] == "PUBLIC" for r in public_resp.json())
+
+    party_resp = await mock_client.get("/api/v1/rulings/party")
+    assert party_resp.status_code == 200
+    assert all(r["privacy_level"] == "PARTY" for r in party_resp.json())
+
+
 # ─── Billing ──────────────────────────────────────────────────────────────────
 
 
@@ -284,6 +309,50 @@ async def test_mock_list_party_members_includes_name_and_email(mock_client: Asyn
     assert len(data) > 0
     assert "user_name" in data[0]
     assert "user_email" in data[0]
+
+
+@pytest.mark.anyio
+async def test_mock_create_party_and_invite_flow(mock_client: AsyncClient):
+    """Mock party create + invite should return usable payloads."""
+    create = await mock_client.post("/api/v1/parties", json={"name": "Audit Guild"})
+    assert create.status_code == 201
+    party = create.json()
+    party_id = party["id"]
+
+    invite = await mock_client.get(f"/api/v1/parties/{party_id}/invite")
+    assert invite.status_code == 200
+    assert "/invite/" in invite.json()["invite_url"]
+
+    token = invite.json()["invite_url"].split("/invite/")[-1]
+    join = await mock_client.post("/api/v1/parties/join-via-link", json={"token": token})
+    # current mock user may already be owner/member; either is acceptable
+    assert join.status_code in (201, 409)
+
+
+# ─── Admin ────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_mock_admin_endpoints(mock_client: AsyncClient):
+    stats = await mock_client.get("/api/v1/admin/stats")
+    assert stats.status_code == 200
+    stats_data = stats.json()
+    assert "total_users" in stats_data
+    assert "total_sessions" in stats_data
+
+    users = await mock_client.get("/api/v1/admin/users")
+    assert users.status_code == 200
+    assert isinstance(users.json(), list)
+
+    publishers = await mock_client.get("/api/v1/admin/publishers")
+    assert publishers.status_code == 200
+    assert isinstance(publishers.json(), list)
+
+    tiers = await mock_client.get("/api/v1/admin/tiers")
+    assert tiers.status_code == 200
+    tier_payload = tiers.json()
+    assert isinstance(tier_payload, list)
+    assert "id" in tier_payload[0]
 
 
 # ─── Rulesets ─────────────────────────────────────────────────────────────────

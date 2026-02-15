@@ -60,7 +60,18 @@
 - Ready game selection now redirects directly to `/session/{id}` after session creation.
 - Party member API responses now include `user_name` and `user_email` for UI display.
 - Mock API library routes now keep in-memory state for add/remove/favorite behavior during UI testing.
+- Mock API now includes parity routes for user profile updates, rulings visibility/update, party lifecycle actions, and admin dashboards.
 - Shelf dashboard now renders claimed library games from `/api/v1/library` for immediate user feedback.
+- Frontend `fetcher<T>()` now safely handles `204/205` responses without attempting JSON parsing.
+- Frontend regression tests were added at `frontend/src/lib/api.test.ts` for `fetcher<T>()` success, no-content, and error-detail handling.
+- Judge prompts are now agent-aware: session `persona` and `system_prompt_override` are injected as a style layer while hard grounding constraints remain non-overridable.
+- Verdict generation now includes robust JSON extraction/normalization (including fenced JSON parsing, confidence clamping, and structured fallback behavior).
+- Judge now accepts model-selected `citation_chunk_indexes` to align returned citations with the exact evidence used.
+- Judge requests now carry recent chat turns (`history`) so follow-up questions are interpreted with conversation continuity.
+- Ingestion rulebook classification now uses structured JSON output plus a confidence threshold for stricter acceptance quality.
+- Backend static checks now pass for both `app/` and `tests/` with `ruff`; pytest warning filter added for known asyncpg cleanup noise.
+- Root `make lint` now executes ruff plus targeted mypy checks via `uv run --with mypy`, removing local tooling drift.
+- Root `make test` and `make lint` now include both backend and frontend checks, with `make test-backend` / `make test-frontend` split targets for focused runs.
 - ECS backend task-definition baseline is now versioned at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
 
 ---
@@ -524,7 +535,7 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 | Unit        | pytest                  | Core modules (chunker, embedder, retriever, judge) |
 | Integration | pytest + testcontainers | DB, Redis, full pipeline                           |
 | E2E         | pytest + httpx          | API endpoints end-to-end                           |
-| Frontend    | Vitest + Playwright     | Component + browser tests                          |
+| Frontend    | Vitest (implemented)    | API-client regression tests (`src/lib/api.test.ts`) |
 | Load        | Locust                  | API throughput under load                          |
 
 ### 8.1 Critical Test Cases
@@ -539,6 +550,10 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 8. Conflicting rules: both interpretations shown
 9. Rate limit exceeded: 429 returned with retry-after
 10. Expired session: 410 returned
+11. 204/205 API responses: frontend client returns `undefined` without JSON parse errors
+12. Agent prompt layering: persona/style overrides are applied without allowing grounding-rule bypass
+13. Verdict JSON resilience: fenced/partial JSON is parsed and normalized safely
+14. Follow-up continuity: recent chat history improves pronoun/ellipsis disambiguation without bypassing retrieval grounding
 
 ---
 

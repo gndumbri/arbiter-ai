@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from app.mock.fixtures import MOCK_CURRENT_USER, _iso, _uuid
+from app.mock.fixtures import MOCK_CURRENT_USER, _iso
 
 # ─── Canned Verdicts ──────────────────────────────────────────────────────────
 # WHY: A selection of realistic verdict responses keyed by keyword.
@@ -121,7 +121,11 @@ def create_mock_verdict(query: str, session_id: str | None = None) -> dict[str, 
                 "source": "Official Rulebook",
                 "page": 42,
                 "section": "Core Rules",
-                "snippet": f"(Mock citation for query: '{query[:50]}...')" if len(query) > 50 else f"(Mock citation for query: '{query}')",
+                "snippet": (
+                    f"(Mock citation for query: '{query[:50]}...')"
+                    if len(query) > 50
+                    else f"(Mock citation for query: '{query}')"
+                ),
                 "is_official": True,
             },
         ],
@@ -140,7 +144,7 @@ def create_mock_session(game_name: str) -> dict[str, Any]:
     Returns:
         Dict matching the SessionRead schema with fresh UUID and timestamps.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return {
         "id": str(uuid.uuid4()),
         "user_id": MOCK_CURRENT_USER["id"],
@@ -180,7 +184,7 @@ def create_mock_library_entry(game_name: str, game_slug: str | None = None) -> d
     Returns:
         Dict matching the LibraryEntryResponse schema.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     slug = game_slug or game_name.lower().replace(" ", "-").replace("'", "")
     return {
         "id": str(uuid.uuid4()),
@@ -210,7 +214,7 @@ def create_mock_ruling(
     Returns:
         Dict matching the SavedRulingResponse schema.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     verdict = create_mock_verdict(query)
     return {
         "id": str(uuid.uuid4()),

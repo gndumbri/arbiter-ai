@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.core.chunking import Chunk, chunk_document, estimate_tokens
+from app.core.chunking import chunk_document, estimate_tokens
 from app.core.protocols import ParsedDocument, ParsedSection
 
 

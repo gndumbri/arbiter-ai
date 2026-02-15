@@ -79,6 +79,10 @@ async def submit_query(
                        429 if rate limited, 500 if adjudication fails.
     """
     # ── 1. Validate session exists and is not expired ─────────────────────
+    session_game_name: str | None = None
+    session_persona: str | None = None
+    session_system_prompt_override: str | None = None
+
     if body.session_id:
         session_result = await db.execute(
             select(Session).where(
@@ -98,6 +102,10 @@ async def submit_query(
                 status_code=410,
                 detail="Session has expired. Create a new session to continue.",
             )
+
+        session_game_name = session_record.game_name
+        session_persona = session_record.persona
+        session_system_prompt_override = session_record.system_prompt_override
 
     # ── 2. Resolve vector namespaces from session's rulesets ───────────────
     # WHY: In pgvector, namespace is the ruleset UUID string.
@@ -177,7 +185,13 @@ async def submit_query(
         verdict = await engine.adjudicate(
             query=body.query,
             namespaces=namespaces,
-            game_name=body.game_name,
+            game_name=body.game_name or session_game_name,
+            persona=session_persona,
+            system_prompt_override=session_system_prompt_override,
+            conversation_history=[
+                {"role": turn.role, "content": turn.content}
+                for turn in (body.history or [])
+            ],
         )
     except Exception as exc:
         logger.exception("adjudication_failed", query=body.query[:100])

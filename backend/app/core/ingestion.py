@@ -12,6 +12,7 @@ Pipeline steps:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import uuid
@@ -34,6 +35,7 @@ logger = logging.getLogger(__name__)
 PDF_MAGIC_BYTES = b"%PDF-"
 MAX_FILE_SIZE_MB = 20
 MAX_PAGE_COUNT = 500
+RULEBOOK_MIN_CONFIDENCE = 0.55
 
 
 class IngestionError(Exception):
@@ -218,32 +220,76 @@ class IngestionPipeline:
                 Message(
                     role="system",
                     content=(
-                        "You are a document classifier. Determine if the provided "
-                        "text is from a board game, card game, or tabletop game "
-                        "rulebook. Look for terms like 'Setup', 'Turn Order', "
-                        "'Victory Points', 'Components', 'Players', 'Dice', 'Cards', "
-                        "'Game Board'. Answer ONLY with 'YES' or 'NO' followed by "
-                        "a one-sentence reason."
+                        "You are a strict classifier for tabletop game rulebooks.\n"
+                        "Determine whether the excerpt is from a board/card/tabletop RPG rulebook.\n"
+                        "Look for structural signals: setup, turn structure, actions, components,\n"
+                        "combat/ability timing, victory/win conditions, glossary, examples.\n"
+                        "Reject lore-only docs, fiction, blogs, invoices, manuals unrelated to gameplay.\n\n"
+                        "Return ONLY valid JSON:\n"
+                        "{\n"
+                        '  "is_rulebook": true/false,\n'
+                        '  "confidence": 0.0-1.0,\n'
+                        '  "reason": "short reason",\n'
+                        '  "signals": ["signal1", "signal2"]\n'
+                        "}"
                     ),
                 ),
                 Message(
                     role="user",
-                    content=f"Is this a game rulebook?\n\n{sample_text}",
+                    content=f"Classify this excerpt:\n\n{sample_text}",
                 ),
             ],
             model=None,  # Uses fast model configured in provider
             temperature=0.0,
-            max_tokens=100,
+            max_tokens=220,
+            response_format={"type": "json_object"},
         )
 
-        answer = response.content.strip().upper()
-        if not answer.startswith("YES"):
+        decision = self._parse_rulebook_classification(response.content)
+        is_rulebook = bool(decision.get("is_rulebook", False))
+        confidence = float(decision.get("confidence", 0.0))
+
+        if not is_rulebook or confidence < RULEBOOK_MIN_CONFIDENCE:
             raise IngestionError(
                 "NOT_A_RULEBOOK",
                 "Upload rejected. This does not appear to be a valid game rulebook.",
             )
 
-        logger.info("Document classified as rulebook")
+        logger.info(
+            "Document classified as rulebook (confidence=%.2f, reason=%s)",
+            confidence,
+            decision.get("reason", "n/a"),
+        )
+
+    @staticmethod
+    def _parse_rulebook_classification(raw: str) -> dict[str, object]:
+        """Parse classifier output with a permissive fallback."""
+        text = raw.strip()
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+
+        if isinstance(parsed, dict):
+            confidence = parsed.get("confidence", 0.0)
+            try:
+                confidence_value = max(0.0, min(1.0, float(confidence)))
+            except (TypeError, ValueError):
+                confidence_value = 0.0
+            return {
+                "is_rulebook": bool(parsed.get("is_rulebook", False)),
+                "confidence": confidence_value,
+                "reason": str(parsed.get("reason") or ""),
+            }
+
+        # Backward-compatible fallback for non-JSON models in edge cases.
+        upper = text.upper()
+        return {
+            "is_rulebook": upper.startswith("YES"),
+            "confidence": 0.6 if upper.startswith("YES") else 0.0,
+            "reason": text[:200],
+        }
 
     # ── Vector Record Builder ──────────────────────────────────────────────────
 

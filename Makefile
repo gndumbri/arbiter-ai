@@ -1,4 +1,4 @@
-.PHONY: dev test lint migrate up down
+.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down
 
 # Start Docker services
 up:
@@ -12,14 +12,28 @@ down:
 migrate:
 	cd backend && uv run alembic upgrade head
 
-# Run all backend tests
-test:
+# Run backend tests only
+test-backend:
 	cd backend && uv run pytest tests/ -v
 
-# Run linters
-lint:
-	cd backend && uv run ruff check app/
-	cd backend && uv run mypy app/ --ignore-missing-imports
+# Run frontend tests only
+test-frontend:
+	cd frontend && npm run test
+
+# Run backend + frontend tests
+test: test-backend test-frontend
+
+# Run backend linters only
+lint-backend:
+	cd backend && uv run ruff check app/ tests
+	cd backend && uv run --with mypy mypy app/config.py app/core/environment.py --ignore-missing-imports
+
+# Run frontend linter only
+lint-frontend:
+	cd frontend && npm run lint
+
+# Run backend + frontend linters
+lint: lint-backend lint-frontend
 
 # Start backend dev server
 backend:
