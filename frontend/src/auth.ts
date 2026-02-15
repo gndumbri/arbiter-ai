@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { db } from "@/db";
+import { getDb } from "@/db";
 import { accounts, users, verificationTokens } from "@/db/auth-schema";
 import { createHmac } from "crypto";
 import Email from "next-auth/providers/email";
@@ -37,14 +37,19 @@ function createBackendAccessToken(payload: {
   return `${signingInput}.${signature}`;
 }
 
+// WHY: Build the adapter only when DATABASE_URL is available. During `next build`
+// in Docker there is no database, so we skip the adapter to avoid a build-time crash.
+const adapter = process.env.DATABASE_URL
+  ? DrizzleAdapter(getDb(), {
+      usersTable: users,
+      accountsTable: accounts,
+      verificationTokensTable: verificationTokens,
+    })
+  : undefined;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  adapter: DrizzleAdapter(db, {
-    usersTable: users,
-    accountsTable: accounts,
-    // sessionsTable not needed for JWT strategy
-    verificationTokensTable: verificationTokens,
-  }),
+  ...(adapter ? { adapter } : {}),
   session: { strategy: "jwt" },
   callbacks: {
     ...authConfig.callbacks,
