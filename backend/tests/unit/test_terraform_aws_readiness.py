@@ -146,10 +146,24 @@ def test_terraform_commits_full_sandbox_bootstrap_profile() -> None:
     sandbox_vars = _read_tf("infra/terraform/environments/sandbox.tfvars")
 
     assert 'environment = "sandbox"' in sandbox_vars
-    assert "create_networking            = true" in sandbox_vars
+    assert "create_networking              = true" in sandbox_vars
     assert "create_service_security_groups = true" in sandbox_vars
-    assert "create_alb_resources         = true" in sandbox_vars
-    assert "create_ecs_task_roles        = true" in sandbox_vars
-    assert "create_cloudwatch_log_groups = true" in sandbox_vars
-    assert "create_data_services         = true" in sandbox_vars
-    assert "create_efs_resources         = true" in sandbox_vars
+    assert "create_alb_resources           = true" in sandbox_vars
+    assert "create_ecs_task_roles          = true" in sandbox_vars
+    assert "create_cloudwatch_log_groups   = true" in sandbox_vars
+    assert "create_data_services           = true" in sandbox_vars
+    assert "create_efs_resources           = true" in sandbox_vars
+
+
+def test_terraform_commits_safe_production_profile() -> None:
+    production_vars = _read_tf("infra/terraform/environments/production.tfvars")
+
+    assert 'environment = "production"' in production_vars
+    assert "create_networking              = true" in production_vars
+    assert "create_service_security_groups = true" in production_vars
+    assert "create_alb_resources           = true" in production_vars
+    assert "create_ecs_task_roles          = true" in production_vars
+    assert "create_cloudwatch_log_groups   = true" in production_vars
+    assert "create_data_services           = true" in production_vars
+    assert "create_github_actions_iam = true" in production_vars
+    assert 'ses_domain = ""' in production_vars

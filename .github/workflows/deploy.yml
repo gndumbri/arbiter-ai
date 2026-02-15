@@ -241,6 +241,12 @@ jobs:
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
 
+      - name: Validate production tfvars profile
+        if: ${{ steps.context.outputs.deploy_mode == 'production' && steps.context.outputs.tf_vars_file == '' }}
+        run: |
+          echo "::error::Production deploy requires infra/terraform/environments/production.tfvars to avoid destructive default drift."
+          exit 1
+
       - name: Validate manual force-unlock inputs
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id == '' }}
         run: |
@@ -252,6 +258,17 @@ jobs:
         run: |
           echo "Manual force-unlock requested for state key: ${{ steps.context.outputs.tf_state_key }}"
           terraform force-unlock -force "${{ github.event.inputs.force_unlock_id }}"
+
+      - name: Prune unmanaged SES domain state (production)
+        if: ${{ steps.context.outputs.deploy_mode == 'production' && steps.context.outputs.tf_vars_file != '' }}
+        run: |
+          # If production tfvars sets ses_domain="", SES identity resources are intentionally unmanaged.
+          # Remove any legacy SES domain resources from state so plan does not fail on read permissions.
+          if grep -Eq '^[[:space:]]*ses_domain[[:space:]]*=[[:space:]]*""[[:space:]]*$' "${{ steps.context.outputs.tf_vars_file }}"; then
+            echo "ses_domain is empty in ${{ steps.context.outputs.tf_vars_file }}; pruning legacy SES domain resources from Terraform state (best effort)."
+            terraform state rm 'aws_ses_domain_dkim.main[0]' || true
+            terraform state rm 'aws_ses_domain_identity.main[0]' || true
+          fi
 
       - name: Import existing ECS services
         env:

@@ -168,26 +168,18 @@ frontend_nextauth_url = "https://arbiter-ai.com"
 next_public_api_url = "/api/v1"
 email_provider = "ses"
 sandbox_email_bypass_enabled = false
-create_networking            = false
-create_service_security_groups = false
-create_alb_resources         = false
-create_github_actions_iam    = false
-create_ecs_task_roles        = false
-create_cloudwatch_log_groups = false
-create_efs_resources         = false
-create_data_services         = false
-enable_shared_uploads        = true
-existing_vpc_id              = "vpc-xxxxxxxx"
-existing_alb_security_group_id = "sg-albxxxxxxxx"
-existing_ecs_security_group_id = "sg-ecsxxxxxxxx"
-existing_backend_target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/arbiter-ai-backend-tg/xxxxxxxx"
-existing_frontend_target_group_arn = "arn:aws:elasticloadbalancing:us-east-1:<ACCOUNT_ID>:targetgroup/arbiter-ai-frontend-tg/xxxxxxxx"
-existing_public_subnet_ids   = ["subnet-public-a", "subnet-public-b"]
-existing_private_subnet_ids  = ["subnet-private-a", "subnet-private-b"]
-existing_ecs_task_execution_role_name = "arbiter-ai-ecs-task-execution"
-existing_ecs_task_role_name           = "arbiter-ai-ecs-task"
-existing_efs_file_system_id           = "fs-xxxxxxxx"
-existing_efs_access_point_id          = "fsap-xxxxxxxx"
+create_networking              = true
+create_service_security_groups = true
+create_alb_resources           = true
+create_github_actions_iam      = true
+create_ecs_task_roles          = true
+manage_ecs_task_role_policies  = true
+create_cloudwatch_log_groups   = true
+create_data_services           = true
+create_efs_resources           = false
+enable_shared_uploads          = false
+ses_domain                     = ""
+email_from                     = "noreply@arbiter-ai.com"
 worker_desired_count = 1
 beat_desired_count   = 1
 uploads_dir          = "/tmp/arbiter_uploads"
@@ -195,9 +187,9 @@ secrets_manager_arn  = "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:arb
 ```
 
 > [!TIP]
-> If your CI role cannot create IAM/VPC/EFS resources, keep the `create_*` flags above set to `false` and provide `existing_*` IDs. This avoids `AccessDenied` on `CreateVpc`, `CreateRole`, and `CreateFileSystem`.
+> The deploy workflow auto-loads `infra/terraform/environments/<deploy_mode>.tfvars`. Keep both sandbox and production profiles committed to avoid destructive default drift from `create_* = false`.
 >
-> The deploy workflow auto-loads `infra/terraform/environments/<deploy_mode>.tfvars` when present. The repo includes `infra/terraform/environments/sandbox.tfvars` for full sandbox bootstrap.
+> If you intentionally run "reuse existing" mode, migrate state carefully first (or provide `existing_*` IDs explicitly) before flipping `create_*` flags to `false`.
 
 ### 4b. ECS task definition in Terraform
 

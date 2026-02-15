@@ -1,0 +1,37 @@
+# Canonical AWS production profile.
+# Keep this file non-secret; secrets still come from CI -var args / secret vars.
+
+environment = "production"
+app_mode    = "production"
+app_env     = "production"
+
+# Current production stack is Terraform-managed.
+# Keep these true to prevent accidental destructive "reuse mode" drift.
+create_networking              = true
+create_service_security_groups = true
+create_alb_resources           = true
+create_ecs_task_roles          = true
+manage_ecs_task_role_policies  = true
+create_cloudwatch_log_groups   = true
+create_data_services           = true
+create_efs_resources           = false
+enable_shared_uploads          = false
+
+# CI OIDC role is currently managed in-state.
+create_github_actions_iam = true
+
+# Runtime defaults for production behavior.
+inject_optional_sandbox_secrets = false
+sandbox_email_bypass_enabled    = false
+email_provider                  = "ses"
+email_from                      = "noreply@arbiter-ai.com"
+
+# SES domain identity is managed externally in production.
+# Keep empty to avoid Terraform SES domain management with restricted CI roles.
+ses_domain = ""
+
+# Cost/availability baseline.
+backend_desired_count  = 1
+frontend_desired_count = 1
+worker_desired_count   = 1
+beat_desired_count     = 1

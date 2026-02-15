@@ -85,6 +85,10 @@ def test_deploy_workflow_serializes_deploy_runs_and_handles_tf_locks() -> None:
     assert "group: deploy-${{ github.workflow }}-${{ github.ref }}" in text
     assert "-lock-timeout=10m" in text
     assert "terraform force-unlock -force" in text
+    assert "Validate production tfvars profile" in text
+    assert "Production deploy requires infra/terraform/environments/production.tfvars" in text
+    assert "Prune unmanaged SES domain state (production)" in text
+    assert "terraform state rm 'aws_ses_domain_identity.main[0]'" in text
     assert "Validate manual force-unlock inputs" in text
     assert "force_unlock=true requires force_unlock_id to be set." in text
     assert "Optional manual force-unlock" in text
