@@ -387,6 +387,13 @@ export const api = {
     });
   },
 
+  /** Open Stripe Customer Portal for managing subscription. */
+  createPortalSession: async () => {
+    return fetcher<{ portal_url: string }>("/billing/portal", {
+      method: "POST",
+    });
+  },
+
   // ─── User Profile ──────────────────────────────────────────────────────────
   updateProfile: async (data: { name?: string }) => {
     return fetcher<{ id: string; name: string }>("/users/me", {
@@ -398,5 +405,20 @@ export const api = {
   deleteAccount: async () => {
     return fetcher<void>("/users/me", { method: "DELETE" });
   },
+
+  // ─── Agents ──────────────────────────────────────────────────────────────────
+  /** List active sessions as agents (powers the agent dashboard). */
+  getAgents: async () => {
+    return fetcher<AgentEntry[]>("/agents");
+  },
 };
+
+/** Agent entry — a session that acts as a configured rules judge. */
+export interface AgentEntry {
+  id: string;
+  game_name: string;
+  persona: string | null;
+  created_at: string | null;
+}
+
 

@@ -20,8 +20,8 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Game Library</h2>
-          <p className="text-muted-foreground">Manage your rulesets and start sessions.</p>
+          <h2 className="text-3xl font-bold tracking-tight">Your Shelf</h2>
+          <p className="text-muted-foreground">Your uploaded rulebooks, ready for battle.</p>
         </div>
         <RulesetUploadDialog />
       </div>
@@ -37,9 +37,9 @@ export default function DashboardPage() {
       ) : rulesets?.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">No rulesets yet</h3>
+          <h3 className="text-lg font-semibold">Your shelf is empty, adventurer</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            Upload a PDF rulebook to get started.
+            Upload a rulebook to begin your quest.
           </p>
           <RulesetUploadDialog />
         </div>
@@ -63,7 +63,7 @@ export default function DashboardPage() {
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p className="truncate font-mono text-xs" title={ruleset.filename}>{ruleset.filename}</p>
                     <p className="text-xs">
-                      <span className="font-semibold text-foreground">{ruleset.chunk_count}</span> Rules Indexed
+                      <span className="font-semibold text-foreground">{ruleset.chunk_count}</span> Rules Loaded
                     </p>
                     <p className="text-xs">
                       {ruleset.created_at
@@ -77,7 +77,7 @@ export default function DashboardPage() {
                     <Link href={`/session/${ruleset.session_id}`}>
                       <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                       <MessageSquare className="mr-2 h-4 w-4" />
-                      Start Session
+                      Ask the Arbiter
                     </Link>
                   </Button>
                 </CardFooter>
@@ -95,7 +95,7 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <Badge variant="outline" className="border-green-500 text-green-500">
         <CheckCircle className="mr-1 h-3 w-3" />
-        Ready
+        Ready to Play
       </Badge>
     );
   }

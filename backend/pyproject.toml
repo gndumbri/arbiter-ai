@@ -28,6 +28,7 @@ dependencies = [
     "stripe>=14.3.0",
     "requests>=2.32.0",
     "defusedxml>=0.7.0",
+    "pgvector>=0.3.0",
 ]
 
 [project.optional-dependencies]

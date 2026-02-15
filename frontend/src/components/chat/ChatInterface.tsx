@@ -28,7 +28,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
     {
       id: "welcome",
       role: "assistant",
-      content: "Hello! I am the Arbiter. Ask me any question about the rules, and I will issue a verdict based on the rulebook."
+      content: "⚖️ The Arbiter is in session. State your rules question, and I shall deliver a verdict — with citations, not opinions."
     }
   ]);
   const [input, setInput] = useState("");
@@ -83,8 +83,8 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       setMessages(prev => [...prev, aiMsg]);
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to get a verdict. Please try again.",
+        title: "The Arbiter Fumbled!",
+        description: "Failed to get a verdict. Roll again (try again).",
         variant: "destructive",
       });
     } finally {
@@ -121,8 +121,8 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       })
       .catch(() => {
         toast({
-          title: "Error",
-          description: "Failed to get a verdict. Please try again.",
+          title: "The Arbiter Fumbled!",
+          description: "Failed to get a verdict. Roll again (try again).",
           variant: "destructive",
         });
       })
@@ -160,7 +160,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
                 <div className="flex w-full px-4 justify-start">
                    <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
                      <Loader2 className="h-4 w-4 animate-spin" />
-                     Adjudicating...
+                     Consulting the tomes...
                    </div>
                 </div>
               )}
@@ -181,7 +181,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question about the rules..."
+            placeholder="State your case, adventurer..."
             className="flex-1 min-h-[50px] max-h-[200px] resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
           <Button type="submit" disabled={isLoading || !input.trim()}>

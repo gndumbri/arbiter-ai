@@ -294,7 +294,7 @@ function PartyCard({
             onClick={() => onLeave(party.id)}
           >
             <LogOut className="h-3.5 w-3.5" />
-            Leave
+            Leave Guild
           </Button>
           {isOwner && (
             <Button
@@ -386,9 +386,9 @@ export default function PartiesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Parties</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Adventuring Parties</h1>
           <p className="text-muted-foreground mt-1">
-            Create a group to share rulings with your game night crew.
+            Your crew for game night. Share rulings and settle disputes together.
           </p>
         </div>
         <div className="flex gap-2">
@@ -396,21 +396,21 @@ export default function PartiesPage() {
             <DialogTrigger asChild>
               <Button variant="outline" className="gap-2">
                 <User className="h-4 w-4" />
-                Join Party
+                Join a Guild
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Join a Party</DialogTitle>
+                <DialogTitle>Join a Guild</DialogTitle>
                 <DialogDescription>
-                  Paste the invite link or party ID shared by your group.
+                  Paste the invite link or guild ID shared by your group.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-4">
                 <Label htmlFor="join-id">Invite Link or Party ID</Label>
                 <Input
                   id="join-id"
-                  placeholder="Paste invite link or party ID..."
+                  placeholder="Paste invite link or guild ID..."
                   value={joinId}
                   onChange={(e) => setJoinId(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleJoin()}
@@ -429,21 +429,21 @@ export default function PartiesPage() {
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Plus className="h-4 w-4" />
-                Create Party
+                Found a Guild
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Create a New Party</DialogTitle>
+                <DialogTitle>Found a New Guild</DialogTitle>
                 <DialogDescription>
-                  Name your adventuring party. You can invite members after creation.
+                  Name your adventuring party. You can recruit members after creation.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-4">
-                <Label htmlFor="party-name">Party Name</Label>
+                <Label htmlFor="party-name">Guild Name</Label>
                 <Input
                   id="party-name"
-                  placeholder="e.g. Friday Night Dice Club"
+                  placeholder="e.g. The Fellowship of the Missing Rulebook"
                   value={newPartyName}
                   onChange={(e) => setNewPartyName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -467,9 +467,9 @@ export default function PartiesPage() {
       ) : !parties || parties.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">No parties yet</h3>
+          <h3 className="text-lg font-semibold">No guild yet</h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-            Create a party and invite your friends to share rulings during game night.
+            Found one and recruit your game night crew.
           </p>
         </div>
       ) : (

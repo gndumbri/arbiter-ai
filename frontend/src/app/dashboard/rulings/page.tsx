@@ -253,9 +253,9 @@ export default function RulingsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Saved Rulings</h1>
+          <h1 className="text-3xl font-bold tracking-tight">The Scroll Archive</h1>
           <p className="text-muted-foreground mt-1">
-            Your saved questions and answers, organized by game.
+            Your saved verdicts, organized by game.
           </p>
         </div>
       </div>
@@ -269,7 +269,7 @@ export default function RulingsPage() {
           className="gap-1.5"
         >
           <BookOpen className="h-4 w-4" />
-          My Rulings
+          My Scrolls
         </Button>
         <Button
           variant={activeTab === "community" ? "default" : "ghost"}
@@ -278,7 +278,7 @@ export default function RulingsPage() {
           className="gap-1.5"
         >
           <Globe className="h-4 w-4" />
-          Community
+          Tavern Board
         </Button>
       </div>
 
@@ -337,15 +337,15 @@ export default function RulingsPage() {
           <BookOpen className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">
             {search
-              ? "No results"
+              ? "No scrolls match that search"
               : selectedGame
-                ? `No rulings for ${selectedGame}`
-                : "No saved rulings yet"}
+                ? `No scrolls for ${selectedGame}`
+                : "No scrolls yet"}
           </h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
             {search
               ? "Try a different search term."
-              : "Ask a rules question in a game session and save the answer for later."}
+              : "Save a verdict from the chat to start your archive."}
           </p>
         </div>
       ) : (
