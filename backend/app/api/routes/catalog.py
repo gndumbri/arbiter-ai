@@ -21,7 +21,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +29,17 @@ from app.api.deps import get_db
 from app.models.tables import OfficialRuleset, Publisher
 
 router = APIRouter(prefix="/api/v1/catalog", tags=["catalog"])
+
+# Statuses that should be visible in the Armory/catalog UI.
+# - READY/INDEXED/COMPLETE/PUBLISHED: immediate "chat now" experiences.
+# - UPLOAD_REQUIRED: metadata-only entries that still power discovery.
+CATALOG_VISIBLE_STATUSES = (
+    "READY",
+    "INDEXED",
+    "COMPLETE",
+    "PUBLISHED",
+    "UPLOAD_REQUIRED",
+)
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
@@ -96,7 +107,7 @@ async def list_verified_games(
         select(OfficialRuleset)
         .options(selectinload(OfficialRuleset.publisher))
         .where(
-            OfficialRuleset.status == "INDEXED",
+            OfficialRuleset.status.in_(CATALOG_VISIBLE_STATUSES),
             OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
         )
     )
@@ -109,10 +120,20 @@ async def list_verified_games(
         escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like_term = f"%{escaped}%"
         stmt = stmt.where(
-            OfficialRuleset.game_name.ilike(like_term)
-            | OfficialRuleset.publisher_display_name.ilike(like_term)
-            | OfficialRuleset.publisher.has(Publisher.name.ilike(like_term))
+            OfficialRuleset.game_name.ilike(like_term, escape="\\")
+            | OfficialRuleset.publisher_display_name.ilike(like_term, escape="\\")
+            | OfficialRuleset.publisher.has(Publisher.name.ilike(like_term, escape="\\"))
         )
+
+    # Put chat-ready entries first, then stable alphabetical ordering.
+    ready_first = case(
+        (
+            OfficialRuleset.status.in_(("READY", "INDEXED", "COMPLETE", "PUBLISHED")),
+            0,
+        ),
+        else_=1,
+    )
+    stmt = stmt.order_by(ready_first, OfficialRuleset.game_name.asc())
 
     result = await db.execute(stmt)
     rulesets = result.scalars().all()
@@ -160,7 +181,7 @@ async def get_catalog_detail(
         .options(selectinload(OfficialRuleset.publisher))
         .where(
             OfficialRuleset.game_slug == game_slug,
-            OfficialRuleset.status == "INDEXED",
+            OfficialRuleset.status.in_(CATALOG_VISIBLE_STATUSES),
             OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
         )
     )

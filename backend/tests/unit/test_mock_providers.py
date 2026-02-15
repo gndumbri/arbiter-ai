@@ -16,7 +16,6 @@ import pytest
 
 from app.core.protocols import LLMResponse, Message
 
-
 # ─── MockLLMProvider Tests ────────────────────────────────────────────────────
 
 

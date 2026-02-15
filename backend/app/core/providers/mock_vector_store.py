@@ -113,15 +113,14 @@ class MockVectorStoreProvider:
         for record_id, record in ns_store.items():
             # WHY: Apply metadata filter if provided. Simple key-value
             # matching — production stores support more complex filters.
-            if filter:
-                if not all(
-                    record.metadata.get(k) == v
-                    for k, v in filter.items()
-                ):
-                    continue
+            if filter and not all(
+                record.metadata.get(k) == v
+                for k, v in filter.items()
+            ):
+                continue
 
             # Dot product on (presumably normalized) vectors
-            score = sum(a * b for a, b in zip(vector, record.vector))
+            score = sum(a * b for a, b in zip(vector, record.vector, strict=False))
             scored.append((record_id, score, record.metadata))
 
         # Sort by score descending, take top_k

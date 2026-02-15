@@ -1254,13 +1254,15 @@ npm run dev                  # Start Next.js on port 3000
 # production = Live everything
 APP_MODE=sandbox
 
-# LLM
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
+# Providers (default stack)
+LLM_PROVIDER=bedrock
+EMBEDDING_PROVIDER=bedrock
+VECTOR_STORE_PROVIDER=pgvector
+RERANKER_PROVIDER=flashrank
+PARSER_PROVIDER=docling
 
-# Pinecone
-PINECONE_API_KEY=...
-PINECONE_INDEX_NAME=arbiter-rules
+# AWS Bedrock
+AWS_REGION=us-east-1
 
 # Supabase / Postgres
 DATABASE_URL=postgresql://...
@@ -1274,9 +1276,6 @@ REDIS_URL=redis://localhost:6379/0
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRICE_ID=price_...
-
-# Reranker (optional — Cohere)
-COHERE_API_KEY=...
 
 # Security
 JWT_SECRET=...

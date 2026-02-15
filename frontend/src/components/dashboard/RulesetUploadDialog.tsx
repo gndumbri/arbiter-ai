@@ -44,6 +44,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api, CatalogEntry } from "@/lib/api";
+import { FALLBACK_CATALOG_GAMES } from "@/lib/catalogFallback";
+
+const READY_STATUSES = new Set(["READY", "INDEXED", "COMPLETE", "PUBLISHED"]);
+
+function isReadyStatus(status: string) {
+  return READY_STATUSES.has(status.toUpperCase());
+}
 
 /**
  * Status badge component — shows visual indicator for game readiness.
@@ -52,7 +59,7 @@ import { api, CatalogEntry } from "@/lib/api";
  * (READY) or need to upload their own rulebook (UPLOAD_REQUIRED).
  */
 function StatusBadge({ status }: { status: string }) {
-  if (status === "READY") {
+  if (isReadyStatus(status)) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
         <Zap className="h-3 w-3" />
@@ -73,6 +80,7 @@ export function RulesetUploadDialog() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [catalogEntries, setCatalogEntries] = useState<CatalogEntry[]>([]);
   const [searchResults, setSearchResults] = useState<CatalogEntry[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedGame, setSelectedGame] = useState<CatalogEntry | null>(null);
@@ -87,6 +95,7 @@ export function RulesetUploadDialog() {
     if (!open) {
       setStep(1);
       setSearchQuery("");
+      setCatalogEntries([]);
       setSearchResults([]);
       setSelectedGame(null);
       setCustomGameName("");
@@ -96,6 +105,36 @@ export function RulesetUploadDialog() {
     }
   }, [open]);
 
+  // Preload catalog when opening so users see Armory games immediately.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    const loadCatalog = async () => {
+      setIsSearching(true);
+      try {
+        const entries = await api.listCatalog();
+        if (cancelled) return;
+        const usableEntries = entries.length > 0 ? entries : FALLBACK_CATALOG_GAMES;
+        setCatalogEntries(usableEntries);
+        setSearchResults(usableEntries.slice(0, 60));
+      } catch {
+        if (cancelled) return;
+        setCatalogEntries(FALLBACK_CATALOG_GAMES);
+        setSearchResults(FALLBACK_CATALOG_GAMES);
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   // ─── Step 1: Debounced search ────────────────────────────────────────────
 
   const handleSearch = useCallback((query: string) => {
@@ -103,41 +142,64 @@ export function RulesetUploadDialog() {
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (query.length < 2) {
-      setSearchResults([]);
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      setSearchResults(catalogEntries.slice(0, 60));
+      return;
+    }
+
+    if (normalized.length < 2) {
+      setSearchResults(
+        catalogEntries
+          .filter(
+            (entry) =>
+              entry.game_name.toLowerCase().includes(normalized)
+              || entry.publisher_name.toLowerCase().includes(normalized)
+          )
+          .slice(0, 60)
+      );
       return;
     }
 
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await api.searchCatalog(query);
+        const results = await api.searchCatalog(query.trim());
         setSearchResults(results);
       } catch {
-        setSearchResults([]);
+        // Fallback to local filtering if network/search endpoint fails.
+        setSearchResults(
+          catalogEntries.filter(
+            (entry) =>
+              entry.game_name.toLowerCase().includes(normalized)
+              || entry.publisher_name.toLowerCase().includes(normalized)
+          )
+        );
       } finally {
         setIsSearching(false);
       }
     }, 300);
-  }, []);
+  }, [catalogEntries]);
 
   // ─── Step 2: Handle game selection ───────────────────────────────────────
 
   const handleSelectGame = async (game: CatalogEntry) => {
     setSelectedGame(game);
 
-    if (game.status === "READY") {
+    if (isReadyStatus(game.status)) {
       // Bucket A: Open content → create session → redirect to chat
       setIsLoading(true);
       try {
-        await api.createSession({ game_name: game.game_name });
+        const session = await api.createSession({
+          game_name: game.game_name,
+          active_ruleset_ids: [game.id],
+        });
         toast({
           title: "Ready to judge!",
           description: `${game.game_name} rules are loaded. Start asking questions!`,
         });
         setOpen(false);
-        router.push("/dashboard");
-        router.refresh();
+        router.push(`/session/${session.id}`);
       } catch (error) {
         toast({
           title: "Session failed",
@@ -223,7 +285,7 @@ export function RulesetUploadDialog() {
             {step === 3 && "Upload Rulebook"}
           </DialogTitle>
           <DialogDescription>
-            {step === 1 && "Search our catalog of 180+ games, or create a custom one."}
+            {step === 1 && "Search the Armory catalog, or create a custom game."}
             {step === 3 && `Upload a PDF rulebook for ${selectedGame?.game_name || customGameName}.`}
           </DialogDescription>
         </DialogHeader>

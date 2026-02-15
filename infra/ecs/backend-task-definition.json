@@ -1,0 +1,86 @@
+{
+  "family": "arbiter-backend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/arbiter-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/arbiter-backend-task-role",
+  "containerDefinitions": [
+    {
+      "name": "backend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/arbiter-ai/backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "hostPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "APP_MODE", "value": "production" },
+        { "name": "APP_ENV", "value": "production" },
+        { "name": "LOG_LEVEL", "value": "INFO" },
+        { "name": "ALLOWED_ORIGINS", "value": "https://arbiter-ai.com,https://www.arbiter-ai.com" },
+        { "name": "APP_BASE_URL", "value": "https://arbiter-ai.com" },
+        { "name": "TRUSTED_PROXY_HOPS", "value": "1" },
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "LLM_PROVIDER", "value": "bedrock" },
+        { "name": "EMBEDDING_PROVIDER", "value": "bedrock" },
+        { "name": "VECTOR_STORE_PROVIDER", "value": "pgvector" },
+        { "name": "RERANKER_PROVIDER", "value": "flashrank" },
+        { "name": "PARSER_PROVIDER", "value": "docling" },
+        { "name": "CATALOG_SYNC_ENABLED", "value": "true" },
+        { "name": "CATALOG_SYNC_CRON", "value": "15 */6 * * *" },
+        { "name": "CATALOG_RANKED_GAME_LIMIT", "value": "1000" },
+        { "name": "OPEN_RULES_SYNC_ENABLED", "value": "true" },
+        { "name": "OPEN_RULES_SYNC_CRON", "value": "45 4 * * *" },
+        { "name": "OPEN_RULES_MAX_DOCUMENTS", "value": "20" },
+        { "name": "OPEN_RULES_ALLOWED_LICENSES", "value": "creative commons,open gaming license,orc" },
+        { "name": "OPEN_RULES_FORCE_REINDEX", "value": "false" }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:DATABASE_URL::"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:REDIS_URL::"
+        },
+        {
+          "name": "NEXTAUTH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:NEXTAUTH_SECRET::"
+        },
+        {
+          "name": "STRIPE_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:STRIPE_SECRET_KEY::"
+        },
+        {
+          "name": "STRIPE_WEBHOOK_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:STRIPE_WEBHOOK_SECRET::"
+        },
+        {
+          "name": "STRIPE_PRICE_ID",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:STRIPE_PRICE_ID::"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/arbiter-backend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

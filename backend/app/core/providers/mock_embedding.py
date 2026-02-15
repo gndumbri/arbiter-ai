@@ -11,7 +11,6 @@ Depends on: protocols.py (EmbeddingProvider), factory.py (vector generation)
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from app.config import Settings
 from app.core.protocols import EmbeddingResult

@@ -1,17 +1,20 @@
 
-from unittest.mock import MagicMock, AsyncMock
 import uuid
+from unittest.mock import AsyncMock, MagicMock
+
 from fastapi.testclient import TestClient
-from app.models.tables import Publisher, OfficialRuleset
+
+from app.models.tables import OfficialRuleset, Publisher
+
 
 def test_create_publisher(client: TestClient, db_session: MagicMock):
     # Mock DB behavior: check for existing slug returns None
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     db_session.execute.return_value = mock_result
-    
+
     db_session.commit = AsyncMock()
-    
+
     # Simulate valid ID assignment on refresh
     async def mock_refresh(instance):
         instance.id = uuid.uuid4()
@@ -67,14 +70,14 @@ def test_create_official_ruleset(client: TestClient, db_session: MagicMock):
         api_key_hash=test_key_hash,
     )
     db_session.get = AsyncMock(return_value=mock_pub)
-    
+
     # Mock db.execute(check_slug) -> returns None
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     db_session.execute = AsyncMock(return_value=mock_result)
-    
+
     db_session.commit = AsyncMock()
-    
+
     # Simulate valid ID assignment on refresh
     async def mock_refresh(instance):
         instance.id = uuid.uuid4()
@@ -109,7 +112,7 @@ def test_catalog(client: TestClient, db_session: MagicMock):
         status="READY",
         publisher=mock_pub
     )
-    
+
     mock_result = MagicMock()
     # scalars().all() -> list
     mock_result.scalars.return_value.all.return_value = [mock_ruleset]

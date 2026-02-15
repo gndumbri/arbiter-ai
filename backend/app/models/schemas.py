@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,8 @@ class SessionCreate(BaseModel):
     game_name: str = Field(..., min_length=1, max_length=200)
     persona: str | None = None
     system_prompt_override: str | None = None
+    # Optional ready-to-use official ruleset namespaces for immediate judge access.
+    active_ruleset_ids: list[uuid.UUID] | None = None
 
 
 class SessionRead(BaseModel):
@@ -69,11 +72,17 @@ class RulesetStatusRead(BaseModel):
 # ─── Judge ─────────────────────────────────────────────────────────────────────
 
 
+class JudgeHistoryTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
 class JudgeQuery(BaseModel):
     session_id: uuid.UUID
     query: str = Field(..., min_length=1, max_length=500)
     game_name: str | None = None
     ruleset_ids: list[uuid.UUID] | None = None
+    history: list[JudgeHistoryTurn] | None = Field(default=None, max_length=8)
 
 
 class VerdictCitation(BaseModel):

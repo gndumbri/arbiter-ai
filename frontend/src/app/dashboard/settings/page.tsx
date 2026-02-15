@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState, useEffect, Suspense } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -56,7 +57,9 @@ function SettingsContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(0);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -192,11 +195,6 @@ function SettingsContent() {
    * clear the NextAuth session.
    */
   const handleDeleteAccount = async () => {
-    if (!showDeleteConfirm) {
-      setShowDeleteConfirm(true);
-      return;
-    }
-
     setIsDeleting(true);
     try {
       await api.deleteAccount();
@@ -213,9 +211,35 @@ function SettingsContent() {
         variant: "destructive",
       });
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
     }
   };
+
+  const resetDeleteFlow = () => {
+    setDeleteStep(0);
+    setDeleteConfirmText("");
+    setIsDeleting(false);
+  };
+
+  const closeDeleteDialog = () => {
+    if (isDeleting) return;
+    setShowDeleteDialog(false);
+    resetDeleteFlow();
+  };
+
+  const deleteWarnings = [
+    {
+      title: "The Shelf Will Burn",
+      body: "All uploaded rulebooks, saved rulings, sessions, and shelf entries are permanently erased.",
+    },
+    {
+      title: "Your Guild Bonds Break",
+      body: "Party membership links and shared game access vanish immediately across your tables.",
+    },
+    {
+      title: "No Resurrection Spell Exists",
+      body: "This action is irreversible. Support cannot restore a deleted account.",
+    },
+  ];
 
   // Determine current tier display text
   const currentTier = subscription?.plan_tier || "FREE";
@@ -357,31 +381,89 @@ function SettingsContent() {
         <Button
           variant="destructive"
           className="w-full sm:w-auto"
-          onClick={handleDeleteAccount}
+          onClick={() => setShowDeleteDialog(true)}
           disabled={isDeleting}
         >
-          {isDeleting
-            ? "Retiring..."
-            : showDeleteConfirm
-              ? "Confirm: Permanently Delete Account"
-              : "Retire Character"}
+          Retire Character
         </Button>
         <p className="mt-2 text-xs text-muted-foreground">
-          {showDeleteConfirm
-            ? "⚠️ Click again to permanently delete your account. This cannot be undone."
-            : "Permanently delete your account. This action cannot be undone by any spell."}
+          Permanently delete your account. This action cannot be undone by any spell.
         </p>
-        {showDeleteConfirm && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2"
-            onClick={() => setShowDeleteConfirm(false)}
-          >
-            Cancel
-          </Button>
-        )}
       </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={(open) => { if (!open) closeDeleteDialog(); }}>
+        <DialogContent className="border-destructive/50">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Retire Character Permanently</DialogTitle>
+            <DialogDescription>
+              {deleteStep === 0 && "First warning from the Arbiter. Read carefully before proceeding."}
+              {deleteStep === 1 && "Second warning. This choice affects every game tied to your account."}
+              {deleteStep === 2 && "Final warning. Confirm your intent to complete account deletion."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            {deleteWarnings.map((warning, index) => {
+              const isRevealed = index <= deleteStep;
+              return (
+                <div
+                  key={warning.title}
+                  className={`rounded-md border p-3 transition-colors ${
+                    isRevealed
+                      ? "border-destructive/50 bg-destructive/10"
+                      : "border-border bg-muted/40 opacity-60"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">{warning.title}</p>
+                  <p className="text-xs text-muted-foreground">{warning.body}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {deleteStep >= 2 && (
+            <div className="space-y-2">
+              <Label htmlFor="delete-confirm">
+                Type <span className="font-mono font-semibold">RETIRE</span> to confirm
+              </Label>
+              <Input
+                id="delete-confirm"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="RETIRE"
+                autoComplete="off"
+              />
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={closeDeleteDialog}
+              disabled={isDeleting}
+            >
+              Keep My Character
+            </Button>
+            {deleteStep < 2 ? (
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteStep((prev) => Math.min(prev + 1, 2))}
+                disabled={isDeleting}
+              >
+                {deleteStep === 0 ? "I Understand" : "Continue to Final Warning"}
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAccount}
+                disabled={isDeleting || deleteConfirmText.trim().toUpperCase() !== "RETIRE"}
+              >
+                {isDeleting ? "Retiring..." : "Permanently Delete Account"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

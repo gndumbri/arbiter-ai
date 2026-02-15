@@ -34,6 +34,40 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - IP abuse controls now use trusted proxy-depth parsing (`TRUSTED_PROXY_HOPS`) to prevent spoofed `X-Forwarded-For`.
 - Party invite join flow now validates token payload shape and reuses standard party rate limits without runtime errors.
 - New environment templates added for AWS sandbox/production bootstrap (`backend/.env.*.example`, `frontend/.env.*.example`).
+- "Add Game" wizard now treats `INDEXED`/`COMPLETE`/`PUBLISHED` as chat-ready and routes directly to the created session.
+- Party member responses now include display name/email, and Guild member UI shows names instead of raw UUID-only labels.
+- Dashboard top nav now removes redundant Settings tab (avatar menu remains) and promotes Ask as the primary right-side CTA.
+- Mock library endpoints now persist in-memory add/remove/favorite changes during runtime for realistic frontend testing.
+- Shelf dashboard now surfaces claimed library games so "added from Armory" state is visible in the main view.
+- AWS deployment now includes a repo-managed ECS backend task-definition template (`infra/ecs/backend-task-definition.json`) to prevent secret-key drift.
+- Frontend API client now correctly handles `204/205` no-content responses, preventing false JSON parse failures on delete routes.
+- Frontend regression tests now cover API fetcher success/error/no-content behavior (`frontend/src/lib/api.test.ts`).
+- Mock API parity was expanded for `users`, `rulings`, `parties`, and `admin` endpoints to match dashboard behavior in `APP_MODE=mock`.
+- Backend lint baseline is now clean (`ruff` on `app/` and `tests/`), and flaky async cleanup warnings are filtered in pytest config.
+- `make lint` is now self-contained (no local mypy install required) and runs targeted type checks on critical config/environment modules.
+- Root quality gates now include frontend checks by default (`make test` runs pytest + Vitest; `make lint` runs backend + frontend lint).
+- Judge quality flow was upgraded with stronger grounding prompts, robust JSON normalization, and citation-chunk alignment to improve reliability under real gameplay queries.
+- Agent quality flow now applies persona + custom system instructions directly in adjudication while preserving non-overridable safety/grounding constraints.
+- Judge flow now includes recent-turn conversation context for higher-quality follow-up rulings (without relaxing citation grounding rules).
+- Agent/session creation now stays available during Redis rate-limiter outages (degraded fail-open behavior with warnings), reducing false-create failures.
+- Frontend now surfaces backend error messages cleanly (including structured rate-limit payloads) during agent creation.
+- Account deletion UX now includes a multi-step, on-brand danger flow with escalating warnings and typed confirmation before irreversible deletion.
+- Backend CORS ordering was corrected so browser clients receive CORS headers even on middleware short-circuit responses (rate-limit/auth/errors), fixing agent/session create calls that appeared as CORS failures.
+- Root layout now suppresses browser-extension hydration class drift warnings to reduce false-positive React hydration noise in dev.
+- Catalog browse/search now includes metadata-only `UPLOAD_REQUIRED` games (not just indexed ones), restoring full Armory discovery from seeded data.
+- Shelf "Add Game" flow now preloads Armory entries immediately and keeps a local fallback list, so users see selectable games before typing.
+- Session/Judge flow now supports official READY catalog namespaces via `active_ruleset_ids`, enabling no-upload chat when official indexed content exists.
+- Alembic migration flow now avoids blocking on missing pgvector extension in local DBs, and a drift-fix migration guarantees session persona columns exist.
+- New backend regression tests now cover agent listing and official-ruleset judge namespace wiring (`backend/tests/api/routes/test_agents.py`, `backend/tests/api/routes/test_judge_official_rulesets.py`).
+- Ingestion classification prompt now uses structured JSON + confidence gating to reduce non-rulebook acceptance and improve corpus quality.
+- New regression tests now cover adjudication prompt flow and ingestion classifier parsing (`backend/tests/unit/test_adjudication.py`, `backend/tests/unit/test_ingestion_classification.py`).
+- Armory catalog ingestion now supports BoardGameGeek ranked browse sync (configurable top-N, default 1000) for broader out-of-box game coverage.
+- Open-license rules ingestion now supports multi-document Open5e sync (CC/OGL/ORC), including scheduled production refresh via Celery Beat.
+- New maintenance commands were added for deterministic sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
+- Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
+- Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
+- Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.
+- API now supports direct session metadata lookup by ID for more reliable game-context rendering in Ask/chat views.
 
 ### F1: Game Library (Dashboard)
 

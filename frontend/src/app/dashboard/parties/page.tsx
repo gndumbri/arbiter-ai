@@ -107,10 +107,12 @@ function MemberList({
   partyId,
   ownerId,
   isOwner,
+  currentUserId,
 }: {
   partyId: string;
   ownerId: string;
   isOwner: boolean;
+  currentUserId: string;
 }) {
   const { data: members } = useSWR(
     `party-members-${partyId}`,
@@ -157,10 +159,10 @@ function MemberList({
         >
           <div className="flex items-center gap-2">
             <User className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs">
-              {member.user_id === ownerId
-                ? member.user_id.slice(0, 8) + "…"
-                : member.user_id.slice(0, 8) + "…"}
+            <span className="text-xs font-medium">
+              {member.user_id === currentUserId
+                ? "You"
+                : member.user_name || member.user_email || `${member.user_id.slice(0, 8)}…`}
             </span>
             {member.role === "OWNER" && (
               <Badge variant="secondary" className="text-[10px] gap-0.5 px-1 py-0">
@@ -266,6 +268,7 @@ function PartyCard({
                   partyId={party.id}
                   ownerId={party.owner_id}
                   isOwner={isOwner}
+                  currentUserId={currentUserId}
                 />
               </CardContent>
             </motion.div>

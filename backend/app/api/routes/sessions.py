@@ -7,6 +7,7 @@ queries for a specific game. Sessions have tier-based expiry
 Endpoints:
     POST /api/v1/sessions    → Create a new session
     GET  /api/v1/sessions    → List user's sessions (active only by default)
+    GET  /api/v1/sessions/{id} → Get one session by id (owner-scoped)
 
 Called by: Frontend dashboard (create session), ChatInterface (session context).
 Depends on: deps.py (CurrentUser, DBSession),
@@ -28,16 +29,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
 from app.api.rate_limit import RateLimitDep
 from app.models.schemas import SessionCreate, SessionRead
-from app.models.tables import Session
+from app.models.tables import OfficialRuleset, Publisher, Session
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/api/v1", tags=["sessions"])
+
+READY_CATALOG_STATUSES = ("READY", "INDEXED", "COMPLETE", "PUBLISHED")
 
 
 @router.post("/sessions", response_model=SessionRead, status_code=201)
@@ -54,7 +57,8 @@ async def create_session(
     Tier: All tiers (session duration varies by tier).
 
     Args:
-        body: SessionCreate with game_name, optional persona and system_prompt.
+        body: SessionCreate with game_name, optional persona/system prompt,
+              and optional active official ruleset IDs.
 
     Returns:
         The newly created session object.
@@ -74,6 +78,29 @@ async def create_session(
     # PRO users get 30-day sessions for extended campaign play.
     duration_hours = 24 if user["tier"] == "FREE" else 24 * 30
 
+    active_ruleset_ids: list[uuid.UUID] | None = None
+    if body.active_ruleset_ids:
+        requested_ids = list(dict.fromkeys(body.active_ruleset_ids))
+        valid_stmt = (
+            select(OfficialRuleset.id)
+            .where(
+                OfficialRuleset.id.in_(requested_ids),
+                OfficialRuleset.status.in_(READY_CATALOG_STATUSES),
+                OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+            )
+        )
+        valid_result = await db.execute(valid_stmt)
+        active_ruleset_ids = [row[0] for row in valid_result.all()]
+
+        if len(active_ruleset_ids) != len(requested_ids):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "One or more selected catalog rulesets are unavailable. "
+                    "Choose a READY game from the Armory and try again."
+                ),
+            )
+
     session = Session(
         id=uuid.uuid4(),
         user_id=user["id"],
@@ -81,6 +108,7 @@ async def create_session(
         expires_at=datetime.now(UTC) + timedelta(hours=duration_hours),
         persona=body.persona,
         system_prompt_override=body.system_prompt_override,
+        active_ruleset_ids=active_ruleset_ids,
     )
     db.add(session)
     await db.flush()
@@ -131,3 +159,32 @@ async def list_sessions(
     stmt = stmt.order_by(Session.created_at.desc())
     result = await db.execute(stmt)
     return [SessionRead.model_validate(s) for s in result.scalars().all()]
+
+
+@router.get("/sessions/{session_id}", response_model=SessionRead)
+async def get_session(
+    session_id: uuid.UUID,
+    user: CurrentUser,
+    db: DBSession,
+) -> SessionRead:
+    """Get a single session by ID.
+
+    Auth: JWT required.
+    Rate limit: None.
+    Tier: All tiers.
+
+    Returns:
+        Session payload including game and persona metadata.
+
+    Raises:
+        HTTPException(404): Session not found or not owned by user.
+    """
+    stmt = select(Session).where(
+        Session.id == session_id,
+        Session.user_id == user["id"],
+    )
+    result = await db.execute(stmt)
+    session = result.scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    return SessionRead.model_validate(session)

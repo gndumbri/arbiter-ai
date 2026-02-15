@@ -10,6 +10,7 @@ Depends on: config.py, models/database.py, models/tables.py
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -157,10 +158,8 @@ async def get_current_user(
         # Prefer stable UUID from token sub when possible to avoid duplicate users.
         user_id = uuid.uuid4()
         if sub:
-            try:
+            with contextlib.suppress(ValueError):
                 user_id = uuid.UUID(sub)
-            except ValueError:
-                pass
         user_record = User(
             id=user_id,
             email=email or f"{sub}@arbiter.local",

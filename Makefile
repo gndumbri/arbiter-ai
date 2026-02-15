@@ -1,4 +1,4 @@
-.PHONY: dev test lint migrate up down
+.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down worker beat sync-catalog sync-open-rules
 
 # Start Docker services
 up:
@@ -12,14 +12,28 @@ down:
 migrate:
 	cd backend && uv run alembic upgrade head
 
-# Run all backend tests
-test:
+# Run backend tests only
+test-backend:
 	cd backend && uv run pytest tests/ -v
 
-# Run linters
-lint:
-	cd backend && uv run ruff check app/
-	cd backend && uv run mypy app/ --ignore-missing-imports
+# Run frontend tests only
+test-frontend:
+	cd frontend && npm run test
+
+# Run backend + frontend tests
+test: test-backend test-frontend
+
+# Run backend linters only
+lint-backend:
+	cd backend && uv run ruff check app/ tests
+	cd backend && uv run --with mypy mypy app/config.py app/core/environment.py --ignore-missing-imports
+
+# Run frontend linter only
+lint-frontend:
+	cd frontend && npm run lint
+
+# Run backend + frontend linters
+lint: lint-backend lint-frontend
 
 # Start backend dev server
 backend:
@@ -32,3 +46,19 @@ frontend:
 # Start everything (requires tmux or multiple terminals)
 dev: up
 	@echo "Docker services started. Run 'make backend' and 'make frontend' in separate terminals."
+
+# Start Celery worker
+worker:
+	cd backend && uv run celery -A app.workers.celery_app worker --loglevel=info
+
+# Start Celery Beat scheduler
+beat:
+	cd backend && uv run celery -A app.workers.celery_app beat --loglevel=info
+
+# One-shot metadata sync (BGG hot + ranked)
+sync-catalog:
+	cd backend && uv run python -m scripts.sync_catalog_live
+
+# One-shot open-license rules sync (Open5e -> pgvector)
+sync-open-rules:
+	cd backend && uv run python -m scripts.sync_open_rules

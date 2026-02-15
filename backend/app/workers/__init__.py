@@ -1,1 +1,1 @@
-"""Workers package — Celery tasks for ingestion, cleanup, expiry."""
+"""Workers package — Celery tasks for ingestion and catalog/rules sync."""

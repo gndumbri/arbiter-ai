@@ -15,7 +15,7 @@ Depends on: Nothing
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 # ─── Deterministic UUIDs ─────────────────────────────────────────────────────
 # WHY: Using deterministic UUIDs (not random) so that:
@@ -40,7 +40,7 @@ def _uuid(suffix: str) -> str:
 
 # ─── Timestamps ──────────────────────────────────────────────────────────────
 
-_NOW = datetime.now(timezone.utc)
+_NOW = datetime.now(UTC)
 _YESTERDAY = _NOW - timedelta(days=1)
 _LAST_WEEK = _NOW - timedelta(weeks=1)
 _NEXT_MONTH = _NOW + timedelta(days=30)
@@ -309,7 +309,11 @@ MOCK_RULINGS = [
                     "source": "Player's Handbook",
                     "page": 96,
                     "section": "Sneak Attack",
-                    "snippet": "Beginning at 1st level, you know how to strike subtly and exploit a foe's distraction. Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack if you have advantage on the attack roll. The attack must use a finesse or a ranged weapon.",
+                    "snippet": (
+                        "Beginning at 1st level, you know how to strike subtly and exploit a foe's distraction. "
+                        "Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack "
+                        "if you have advantage on the attack roll. The attack must use a finesse or a ranged weapon."
+                    ),
                     "is_official": True,
                 },
                 {
@@ -351,7 +355,10 @@ MOCK_RULINGS = [
                     "source": "Catan Rulebook",
                     "page": 10,
                     "section": "Maritime Trade",
-                    "snippet": "If you have built a settlement or city on a harbor, you can trade with the bank more favorably.",
+                    "snippet": (
+                        "If you have built a settlement or city on a harbor, "
+                        "you can trade with the bank more favorably."
+                    ),
                     "is_official": True,
                 },
             ],
@@ -386,7 +393,10 @@ MOCK_RULINGS = [
                     "source": "Wingspan Rulebook",
                     "page": 7,
                     "section": "Playing a Bird",
-                    "snippet": "When you play a bird, place it in the leftmost open slot in one of your habitats. Then activate any 'when played' power on the bird.",
+                    "snippet": (
+                        "When you play a bird, place it in the leftmost open slot in one of your habitats. "
+                        "Then activate any 'when played' power on the bird."
+                    ),
                     "is_official": True,
                 },
             ],
@@ -421,7 +431,10 @@ MOCK_RULINGS = [
                     "source": "Gloomhaven Rulebook",
                     "page": 23,
                     "section": "Looting",
-                    "snippet": "Whenever a figure enters a hex with a money token or treasure tile, that figure automatically picks it up.",
+                    "snippet": (
+                        "Whenever a figure enters a hex with a money token or treasure tile, "
+                        "that figure automatically picks it up."
+                    ),
                     "is_official": True,
                 },
             ],

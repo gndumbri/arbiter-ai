@@ -77,6 +77,20 @@ services:
       redis:
         condition: service_healthy
 
+  celery_beat:
+    build:
+      context: ./backend
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://arbiter:arbiter_dev@postgres:5432/arbiter
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   pgdata:
   redisdata:

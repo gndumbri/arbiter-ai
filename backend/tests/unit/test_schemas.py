@@ -26,6 +26,16 @@ def test_session_create_empty_name_rejected():
         SessionCreate(game_name="")
 
 
+def test_session_create_with_active_ruleset_ids():
+    """SessionCreate should accept optional official ruleset IDs."""
+    rid = uuid.uuid4()
+    session = SessionCreate(
+        game_name="Dungeons & Dragons 5th Edition",
+        active_ruleset_ids=[rid],
+    )
+    assert session.active_ruleset_ids == [rid]
+
+
 def test_judge_query_valid():
     """Valid judge query should pass."""
     query = JudgeQuery(session_id=uuid.uuid4(), query="Can I attack?")
@@ -36,6 +46,16 @@ def test_judge_query_too_long():
     """Query exceeding 500 chars should be rejected."""
     with pytest.raises(ValidationError):
         JudgeQuery(session_id=uuid.uuid4(), query="x" * 501)
+
+
+def test_judge_query_history_too_many_turns_rejected():
+    """History exceeding max turn count should be rejected."""
+    with pytest.raises(ValidationError):
+        JudgeQuery(
+            session_id=uuid.uuid4(),
+            query="Follow-up question",
+            history=[{"role": "user", "content": "x"}] * 9,
+        )
 
 
 def test_feedback_valid_values():

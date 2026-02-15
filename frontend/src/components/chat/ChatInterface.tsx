@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, ArrowLeft } from "lucide-react";
+import { Send, Loader2, ArrowLeft, Bot, Swords } from "lucide-react";
 import Textarea from "react-textarea-autosize";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageBubble } from "./MessageBubble";
 import { CitationViewer } from "./CitationViewer";
-import { api, JudgeVerdict, VerdictCitation } from "@/lib/api";
+import { api, type JudgeHistoryTurn, type JudgeVerdict, type VerdictCitation, type SessionSummary } from "@/lib/api";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import useSWR from "swr";
@@ -21,6 +21,17 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   verdict?: JudgeVerdict;
+}
+
+function buildJudgeHistory(messages: Message[]): JudgeHistoryTurn[] {
+  return messages
+    .filter((message) => message.id !== "welcome")
+    .slice(-6)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim().slice(0, 1000),
+    }))
+    .filter((turn) => turn.content.length > 0);
 }
 
 export function ChatInterface({ sessionId }: ChatInterfaceProps) {
@@ -37,11 +48,29 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
-  // WHY: Fetch the session to get the game_name for auto-tagging saved rulings.
+  // WHY: Fetch a single session for reliable game/NPC context and ruling tagging.
+  const { data: sessionMeta } = useSWR(
+    sessionId ? ["session", sessionId] : null,
+    () => api.getSession(sessionId),
+    {
+      onError: () => {},
+      revalidateOnFocus: false,
+    }
+  );
+
+  // Fallback list keeps compatibility if single-session lookup fails.
   const { data: sessions } = useSWR("sessions", () => api.listSessions(), {
     onError: () => {},
   });
-  const gameName = sessions?.find((s: { id: string; game_name: string }) => s.id === sessionId)?.game_name;
+  const fallbackMeta = sessions?.find((s: SessionSummary) => s.id === sessionId);
+  const resolvedSession = sessionMeta ?? fallbackMeta;
+  const gameName = resolvedSession?.game_name;
+  const persona = resolvedSession?.persona?.trim() || null;
+  const npcDetail = resolvedSession?.system_prompt_override?.trim() || null;
+  const headerTitle = gameName || "Unknown Game Session";
+  const personaLine = persona
+    ? `NPC Persona: ${persona}`
+    : "NPC Persona: Default Arbiter";
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -68,9 +97,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
+      const history = buildJudgeHistory([...messages, userMsg]);
       const response = await api.submitQuery({
         session_id: sessionId,
         query: userMsg.content,
+        history,
       }) as JudgeVerdict;
 
       const aiMsg: Message = {
@@ -107,9 +138,10 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       role: "user",
       content: question,
     };
+    const history = buildJudgeHistory([...messages, userMsg]);
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
-    api.submitQuery({ session_id: sessionId, query: question })
+    api.submitQuery({ session_id: sessionId, query: question, history })
       .then((response) => {
         const aiMsg: Message = {
           id: (Date.now() + 1).toString(),
@@ -134,38 +166,64 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   return (
     <div className="flex h-screen flex-col bg-background/50">
-      <header className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-        <Link href="/dashboard" className="mr-4">
-             <Button variant="ghost" size="icon">
-                <ArrowLeft className="h-4 w-4" />
-             </Button>
-        </Link>
-        <span className="font-semibold">Session {sessionId.slice(0, 8)}</span>
+      <header className="border-b bg-background/90">
+        <div className="mx-auto flex h-14 w-full max-w-4xl items-center gap-3 px-3 sm:h-[60px] sm:px-5">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold sm:text-base" title={headerTitle}>
+              {headerTitle}
+            </p>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground sm:text-xs">
+              <span className="inline-flex items-center gap-1">
+                <Swords className="h-3 w-3" />
+                {gameName || "Game unknown"}
+              </span>
+              <span className="inline-flex items-center gap-1 truncate">
+                <Bot className="h-3 w-3" />
+                <span className="truncate" title={personaLine}>
+                  {personaLine}
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
       </header>
 
       <div className="flex-1 overflow-hidden relative">
-          <ScrollArea className="h-full p-4" ref={scrollRef}>
-            <div className="space-y-4 pb-4">
-              {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  gameName={gameName}
-                  sessionId={sessionId}
-                  onCitationClick={setSelectedCitation}
-                  onFollowUp={handleFollowUp}
-                />
-              ))}
-              {isLoading && (
-                <div className="flex w-full px-4 justify-start">
-                   <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-                     <Loader2 className="h-4 w-4 animate-spin" />
-                     Consulting the tomes...
-                   </div>
+          <div className="mx-auto h-full w-full max-w-4xl">
+            <ScrollArea className="h-full px-3 py-4 sm:px-5" ref={scrollRef}>
+              {!!npcDetail && (
+                <div className="mb-4 rounded-md border border-border/60 bg-card/60 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">NPC Directive:</span>{" "}
+                  <span className="line-clamp-2">{npcDetail}</span>
                 </div>
               )}
-            </div>
-          </ScrollArea>
+              <div className="space-y-4 pb-4">
+                {messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    gameName={gameName}
+                    sessionId={sessionId}
+                    onCitationClick={setSelectedCitation}
+                    onFollowUp={handleFollowUp}
+                  />
+                ))}
+                {isLoading && (
+                  <div className="flex w-full px-4 justify-start">
+                    <div className="flex items-center gap-2 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Consulting the tomes...
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
            
           {selectedCitation && (
              <CitationViewer 
@@ -175,20 +233,22 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
           )}
       </div>
 
-      <div className="border-t p-4 bg-background">
-        <form onSubmit={handleSubmit} className="flex gap-4">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="State your case, adventurer..."
-            className="flex-1 min-h-[50px] max-h-[200px] resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          />
-          <Button type="submit" disabled={isLoading || !input.trim()}>
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            <span className="sr-only">Send</span>
-          </Button>
-        </form>
+      <div className="border-t bg-background/95">
+        <div className="mx-auto w-full max-w-4xl p-3 sm:p-5">
+          <form onSubmit={handleSubmit} className="flex gap-3 sm:gap-4">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="State your case, adventurer..."
+              className="flex-1 min-h-[50px] max-h-[200px] resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <Button type="submit" disabled={isLoading || !input.trim()}>
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <span className="sr-only">Send</span>
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );
