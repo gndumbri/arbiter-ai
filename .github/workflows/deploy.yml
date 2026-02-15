@@ -217,16 +217,27 @@ jobs:
           if [ -z "$DEPLOY_MODE" ]; then
             DEPLOY_MODE="${DEFAULT_DEPLOY_MODE}"
           fi
+          DEPLOY_MODE="$(echo "$DEPLOY_MODE" | tr '[:upper:]' '[:lower:]' | xargs)"
+          if [ "$DEPLOY_MODE" = "prod" ]; then
+            echo "Normalizing DEPLOY_MODE=prod to production."
+            DEPLOY_MODE="production"
+          fi
+          if [ "$DEPLOY_MODE" != "production" ] && [ "$DEPLOY_MODE" != "sandbox" ]; then
+            echo "::error::Unsupported deploy mode: $DEPLOY_MODE (expected sandbox or production)."
+            exit 1
+          fi
 
           TF_STATE_KEY="${{ github.event.inputs.tf_state_key }}"
           if [ -z "$TF_STATE_KEY" ]; then
-            TF_STATE_KEY="${{ vars.TF_STATE_KEY }}"
+            if [ "$DEPLOY_MODE" = "production" ]; then
+              TF_STATE_KEY="${DEFAULT_TF_STATE_KEY}"
+            else
+              TF_STATE_KEY="${DEPLOY_MODE}/terraform.tfstate"
+            fi
           fi
-          if [ -z "$TF_STATE_KEY" ]; then
+          if [ "$DEPLOY_MODE" = "production" ] && [ "$TF_STATE_KEY" = "production/terraform.tfstate" ]; then
+            echo "Normalizing legacy production state key to ${DEFAULT_TF_STATE_KEY}."
             TF_STATE_KEY="${DEFAULT_TF_STATE_KEY}"
-          fi
-          if [ -z "$TF_STATE_KEY" ]; then
-            TF_STATE_KEY="${DEPLOY_MODE}/terraform.tfstate"
           fi
 
           echo "deploy_mode=${DEPLOY_MODE}" >> "$GITHUB_OUTPUT"
@@ -241,11 +252,19 @@ jobs:
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
 
-      - name: Validate production tfvars profile
-        if: ${{ steps.context.outputs.deploy_mode == 'production' && steps.context.outputs.tf_vars_file == '' }}
+      - name: Validate deploy tfvars profile
+        if: ${{ steps.context.outputs.tf_vars_file == '' }}
         run: |
-          echo "::error::Production deploy requires infra/terraform/environments/production.tfvars to avoid destructive default drift."
+          echo "::error::Deploy mode '${{ steps.context.outputs.deploy_mode }}' requires infra/terraform/environments/${{ steps.context.outputs.deploy_mode }}.tfvars to avoid destructive default drift."
           exit 1
+
+      - name: Validate production state key
+        if: ${{ steps.context.outputs.deploy_mode == 'production' }}
+        run: |
+          if [ "${{ steps.context.outputs.tf_state_key }}" != "${DEFAULT_TF_STATE_KEY}" ]; then
+            echo "::error::Production deploys must use ${DEFAULT_TF_STATE_KEY}. Got '${{ steps.context.outputs.tf_state_key }}'."
+            exit 1
+          fi
 
       - name: Validate manual force-unlock inputs
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id == '' }}

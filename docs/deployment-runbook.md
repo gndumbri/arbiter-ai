@@ -363,10 +363,10 @@ Set these GitHub repository secrets:
 Optional GitHub repository variables:
 
 - `vars.DEPLOY_MODE` (`sandbox` or `production`; default is `production`)
-- `vars.TF_STATE_KEY` (Terraform backend key override, example `sandbox/terraform.tfstate`; set to `prod/terraform.tfstate` for production default)
 
 > [!IMPORTANT]
-> Canonical production Terraform state key is `prod/terraform.tfstate`. Avoid mixing `prod/...` and `production/...` keys.
+> Canonical production Terraform state key is `prod/terraform.tfstate`. The deploy workflow now enforces this for production runs and normalizes legacy `production/terraform.tfstate`.
+> It also normalizes `DEPLOY_MODE=prod` to `production` to prevent profile/state drift.
 
 Trigger the workflow manually:
 

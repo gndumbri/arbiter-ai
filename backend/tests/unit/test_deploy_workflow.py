@@ -33,7 +33,9 @@ def test_deploy_workflow_supports_state_key_and_mode_overrides() -> None:
     assert "force_unlock" in text
     assert "force_unlock_id" in text
     assert "DEFAULT_TF_STATE_KEY: prod/terraform.tfstate" in text
-    assert "TF_STATE_KEY=\"${DEFAULT_TF_STATE_KEY}\"" in text
+    assert "Normalizing DEPLOY_MODE=prod to production." in text
+    assert "Unsupported deploy mode" in text
+    assert "Normalizing legacy production state key to ${DEFAULT_TF_STATE_KEY}." in text
     assert "terraform init -backend-config=\"key=${{ steps.context.outputs.tf_state_key }}\"" in text
     assert "-var=\"environment=${{ steps.context.outputs.deploy_mode }}\"" in text
     assert "-var=\"app_mode=${{ steps.context.outputs.deploy_mode }}\"" in text
@@ -85,8 +87,10 @@ def test_deploy_workflow_serializes_deploy_runs_and_handles_tf_locks() -> None:
     assert "group: deploy-${{ github.workflow }}-${{ github.ref }}" in text
     assert "-lock-timeout=10m" in text
     assert "terraform force-unlock -force" in text
-    assert "Validate production tfvars profile" in text
-    assert "Production deploy requires infra/terraform/environments/production.tfvars" in text
+    assert "Validate deploy tfvars profile" in text
+    assert "requires infra/terraform/environments/${{ steps.context.outputs.deploy_mode }}.tfvars" in text
+    assert "Validate production state key" in text
+    assert "Production deploys must use ${DEFAULT_TF_STATE_KEY}" in text
     assert "Prune unmanaged SES domain state (production)" in text
     assert "terraform state rm 'aws_ses_domain_identity.main[0]'" in text
     assert "Validate manual force-unlock inputs" in text
