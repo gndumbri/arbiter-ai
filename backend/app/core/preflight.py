@@ -7,9 +7,9 @@ configuration/dependency regressions early.
 from __future__ import annotations
 
 import contextlib
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import uuid
 
 import redis.asyncio as aioredis
 from sqlalchemy import text
@@ -185,4 +185,3 @@ async def run_preflight(
         timestamp_utc=datetime.now(UTC).isoformat(),
         checks=checks,
     )
-

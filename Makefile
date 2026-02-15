@@ -1,4 +1,4 @@
-.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down worker beat sync-catalog sync-open-rules
+.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down worker beat sync-catalog sync-open-rules preflight-sandbox preflight-production
 
 # Start Docker services
 up:
@@ -62,3 +62,11 @@ sync-catalog:
 # One-shot open-license rules sync (Open5e -> pgvector)
 sync-open-rules:
 	cd backend && uv run python -m scripts.sync_open_rules
+
+# Preflight checks for sandbox/staging promotion
+preflight-sandbox:
+	cd backend && uv run python -m scripts.preflight --expected-mode sandbox --probe-embedding
+
+# Preflight checks for production promotion
+preflight-production:
+	cd backend && uv run python -m scripts.preflight --expected-mode production --probe-embedding --probe-llm

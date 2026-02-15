@@ -105,6 +105,8 @@ docker compose up --build
 | `make beat`     | Start Celery Beat scheduler           |
 | `make sync-catalog` | One-shot BGG metadata sync        |
 | `make sync-open-rules` | One-shot Open5e rules sync     |
+| `make preflight-sandbox` | Run sandbox readiness checks   |
+| `make preflight-production` | Run production readiness checks |
 | `make test`     | Run backend + frontend test suites   |
 | `make test-backend` | Run backend pytest suite         |
 | `make test-frontend` | Run frontend Vitest suite       |
@@ -221,6 +223,26 @@ make test-frontend
 # Full lint gate (backend + frontend)
 make lint
 ```
+
+## Deployment Preflight
+
+Run preflight before promoting a build to sandbox or production:
+
+```bash
+# Validates env + DB + Redis + provider stack + embedding probe
+make preflight-sandbox
+
+# Validates env + DB + Redis + provider stack + embedding + LLM probes
+make preflight-production
+```
+
+For CI parsing, run JSON mode directly:
+
+```bash
+cd backend && uv run python -m scripts.preflight --expected-mode production --probe-embedding --probe-llm --json
+```
+
+`--probe-embedding` and `--probe-llm` call live Bedrock APIs and incur normal provider usage costs.
 
 ## Project Structure
 

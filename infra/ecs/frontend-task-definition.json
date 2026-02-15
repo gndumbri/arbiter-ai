@@ -1,0 +1,59 @@
+{
+  "family": "arbiter-frontend",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/arbiter-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/arbiter-frontend-task-role",
+  "containerDefinitions": [
+    {
+      "name": "frontend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/arbiter-ai/frontend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "AUTH_TRUST_HOST", "value": "true" },
+        { "name": "NEXTAUTH_URL", "value": "https://arbiter-ai.com" },
+        { "name": "EMAIL_FROM", "value": "noreply@arbiter-ai.com" },
+        { "name": "EMAIL_FROM_NAME", "value": "Arbiter AI" },
+        { "name": "NODE_ENV", "value": "production" }
+      ],
+      "secrets": [
+        {
+          "name": "AUTH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:NEXTAUTH_SECRET::"
+        },
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:FRONTEND_DATABASE_URL::"
+        },
+        {
+          "name": "BREVO_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:BREVO_API_KEY::"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/arbiter-frontend",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

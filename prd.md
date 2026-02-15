@@ -64,6 +64,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Armory catalog ingestion now supports BoardGameGeek ranked browse sync (configurable top-N, default 1000) for broader out-of-box game coverage.
 - Open-license rules ingestion now supports multi-document Open5e sync (CC/OGL/ORC), including scheduled production refresh via Celery Beat.
 - New maintenance commands were added for deterministic sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
+- Backend deployment readiness now includes explicit preflight gates (`backend/scripts/preflight.py`, `make preflight-sandbox`, `make preflight-production`) that verify env configuration plus DB/Redis/provider health before promotion.
 - Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
 - Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
 - Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.
