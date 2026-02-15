@@ -118,3 +118,11 @@ variable "db_password" {
   type        = string
   sensitive   = true
 }
+
+# --- ElastiCache ---
+
+variable "redis_node_type" {
+  description = "ElastiCache node type (cache.t4g.micro is free-tier eligible)"
+  type        = string
+  default     = "cache.t4g.micro"
+}

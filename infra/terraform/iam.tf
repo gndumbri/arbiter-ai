@@ -99,6 +99,25 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = "*"
       },
       {
+        Effect = "Allow"
+        Action = [
+          "elasticache:CreateCacheCluster",
+          "elasticache:DescribeCacheClusters",
+          "elasticache:ModifyCacheCluster",
+          "elasticache:DeleteCacheCluster",
+          "elasticache:CreateCacheSubnetGroup",
+          "elasticache:DescribeCacheSubnetGroups",
+          "elasticache:ModifyCacheSubnetGroup",
+          "elasticache:DeleteCacheSubnetGroup",
+          "elasticache:ListTagsForResource",
+          "elasticache:AddTagsToResource",
+          "elasticache:RemoveTagsFromResource",
+          "elasticache:DescribeCacheParameterGroups",
+          "elasticache:DescribeCacheParameters"
+        ]
+        Resource = "*"
+      },
+      {
         Effect   = "Allow"
         Action   = "secretsmanager:GetSecretValue"
         Resource = var.secrets_manager_arn
