@@ -44,21 +44,16 @@ These are NOT optional. A feature is not done until all quality gates pass.
 ## Architecture
 
 - **Backend:** Python 3.12+ / FastAPI — `backend/app/`
-- **Frontend:** Next.js 14+ (PWA) — `frontend/src/`
+- **Frontend:** Next.js 16 / React 19 (TypeScript, PWA) — `frontend/src/`
 - **Provider Abstraction:** Protocol-based interfaces in `app/core/protocols.py` — swap any provider via config
-- **Vector DB:** Pinecone Serverless (namespace-per-tenant)
-- **Relational DB:** PostgreSQL via Supabase
-- **Queue:** Redis + Celery (async ingestion)
-- **LLM:** OpenAI (current); OpenAI Agents SDK planned for future integration
-- **Auth/Billing/PWA:** AWS (Cognito, S3, etc.) planned
-- **PRD:** See `plan.md` for complete technical spec
-- **Frontend:** Next.js 16 / React 19 (TypeScript) — `frontend/src/`
-- **Vector DB:** Pinecone Serverless (namespace-per-tenant)
-- **Relational DB:** PostgreSQL 16 (via Docker locally, Supabase in prod)
-- **Queue:** Redis 7 + Celery (async ingestion, not yet implemented)
-- **Auth:** Supabase Auth (JWT) — stub in `api/deps.py`, integration pending
-- **Billing:** Stripe (not yet implemented)
+- **Vector DB:** Pinecone Serverless (namespace-per-ruleset)
+- **Relational DB:** PostgreSQL 16 (Docker locally, RDS in prod)
+- **Queue:** Redis 7 + Celery (async ingestion)
+- **Auth:** NextAuth.js (JWT strategy) — validated in `api/deps.py`
+- **Billing:** Stripe Checkout + Webhooks — `api/routes/billing.py`
+- **LLM:** OpenAI (default), Anthropic (alt) — swappable via config
 - **Migrations:** Alembic — `backend/alembic/`
+- **PRD:** See `plan.md` / `prd.md` / `spec.md`
 
 ## Key Documentation
 
@@ -71,56 +66,56 @@ These are NOT optional. A feature is not done until all quality gates pass.
 ```
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app factory (lifespan, CORS, middleware)
-│   │   ├── config.py            # Pydantic Settings (all env vars)
+│   │   ├── main.py           # FastAPI app factory
+│   │   ├── config.py         # Pydantic Settings (all env vars)
 │   │   ├── api/
-│   │   │   ├── deps.py          # Dependency injection (DB, Redis, Auth)
-│   │   │   ├── middleware.py    # RequestID, Logging, Error handling
-│   │   │   └── routes/          # health.py, sessions.py
+│   │   │   ├── deps.py       # Auth (NextAuth JWT), DB, Redis injection
+│   │   │   ├── middleware.py  # RequestID, logging, error handling
+│   │   │   └── routes/       # 12 route modules (43 endpoints)
 │   │   ├── models/
-│   │   │   ├── tables.py       # SQLAlchemy ORM (8 tables)
-│   │   │   ├── schemas.py      # Pydantic request/response schemas
-│   │   │   └── database.py     # Async engine + session factory
-│   │   ├── core/                # Ingestion, retrieval, judge (not yet implemented)
-│   │   ├── db/                  # Query helpers (not yet implemented)
-│   │   └── workers/             # Celery tasks (not yet implemented)
-│   ├── alembic/                 # DB migrations (initial schema complete)
-│   └── tests/unit/              # test_health.py, test_schemas.py, test_config.py
+│   │   │   ├── tables.py     # SQLAlchemy ORM (10 tables)
+│   │   │   ├── schemas.py    # Pydantic request/response schemas
+│   │   │   └── database.py   # Async engine + session factory
+│   │   └── core/             # Ingestion, retrieval, judge engine
+│   ├── alembic/              # DB migrations
+│   ├── Dockerfile            # Multi-stage Python build
+│   └── tests/                # pytest suite (31 tests)
 ├── frontend/
+│   ├── Dockerfile            # Multi-stage Next.js build
 │   └── src/
-│       ├── app/                 # Next.js App Router (layout.tsx, page.tsx)
-│       ├── lib/
-│       │   ├── api.ts           # API client (health, sessions, judge endpoints)
-│       │   └── types.ts         # TypeScript interfaces matching backend schemas
-│       └── components/          # UI components (not yet implemented)
-├── .agent/workflows/            # 9 quality workflow files
-├── docker-compose.yml           # Postgres 16 + Redis 7
-├── Makefile                     # Dev command shortcuts
-└── .env.example                 # Environment variable template
+│       ├── app/              # App Router (14 routes)
+│       ├── lib/api.ts        # Typed API client (30 methods)
+│       └── components/       # Shadcn UI components
+├── docs/aws-deployment.md    # AWS deployment guide
+├── docker-compose.yml        # Full-stack Docker setup
+├── Makefile                  # Dev command shortcuts
+└── .env.example              # Environment variable template
 ```
 
 ## Implementation Status
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| DB schema & migrations | ✅ Done | 8 tables, initial Alembic migration |
-| FastAPI scaffolding | ✅ Done | App factory, middleware, config, deps |
-| Health endpoint | ✅ Done | `GET /health` with DB/Redis checks |
-| Sessions endpoint | ✅ Done | `POST /api/v1/sessions` |
-| Frontend scaffolding | ✅ Done | Next.js 16 app, API client, TypeScript types |
-| Backend tests | 🟡 Partial | Health, schemas, config — needs expansion |
-| Auth (Supabase JWT) | 🟡 Stub | JWT parsing in deps.py, needs Supabase wiring |
-| Ingestion pipeline | ❌ Not started | PDF parsing, virus scan, chunking, indexing |
-| Adjudication engine | ❌ Not started | Retrieval, reranking, LLM judge |
-| Frontend components | ❌ Not started | Chat, file upload, citations, library |
-| Stripe billing | ❌ Not started | Checkout, webhooks, portal |
-| Publisher API | ❌ Not started | API-key auth, official ruleset management |
-| Celery workers | ❌ Not started | Async task definitions |
-| PWA setup | ❌ Not started | Manifest, service worker, offline page |
-| Frontend tests | ❌ Not started | No test framework configured yet |
+| Component              | Status         | Details                                        |
+| ---------------------- | -------------- | ---------------------------------------------- |
+| DB schema & migrations | ✅ Done        | 10 tables, Alembic migrations                  |
+| FastAPI scaffolding    | ✅ Done        | App factory, middleware, config, deps          |
+| Auth (NextAuth JWT)    | ✅ Done        | JWT validation in `deps.py`, user upsert       |
+| Stripe billing         | ✅ Done        | Checkout, webhooks, 3 lifecycle handlers       |
+| Publisher API          | ✅ Done        | SHA-256 API key auth, key rotation             |
+| User library           | ✅ Done        | 5 CRUD endpoints                               |
+| User profile           | ✅ Done        | GET/PATCH/DELETE `/users/me`                   |
+| Catalog API            | ✅ Done        | List + detail endpoints                        |
+| Sessions API           | ✅ Done        | CRUD + active_only filter                      |
+| Judge API              | ✅ Done        | RAG adjudication with tier-based rate limiting |
+| Frontend (14 routes)   | ✅ Done        | Dashboard, catalog, settings, widget, auth     |
+| API client (`api.ts`)  | ✅ Done        | 30 typed methods with auto Bearer token        |
+| PWA setup              | ✅ Done        | Manifest, service worker, offline page         |
+| Backend tests          | ✅ Done        | 31 tests (routes + unit)                       |
+| Ingestion pipeline     | 🟡 Partial     | Chunking done, full pipeline in progress       |
+| Celery workers         | 🟡 Stub        | Task definitions, needs full wiring            |
+| Frontend tests         | ❌ Not started | No test framework configured yet               |
 
-## Database Tables (8)
+## Database Tables (10)
 
-`users`, `sessions`, `ruleset_metadata`, `publishers`, `official_rulesets`, `user_game_library`, `file_blocklist`, `query_audit_log`
+`users`, `sessions`, `ruleset_metadata`, `publishers`, `official_rulesets`, `user_game_library`, `file_blocklist`, `query_audit_log`, `subscriptions`, `subscription_tiers`
 
 See `backend/app/models/tables.py` for full ORM definitions.

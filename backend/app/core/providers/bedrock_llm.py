@@ -53,7 +53,7 @@ class BedrockLLMProvider(LLMProvider):
                 # User or Assistant messages
                 content_block = {"text": msg.content}
                 # If content is complex (image etc), handle here (omitted for now)
-                
+
                 conversation_messages.append({
                     "role": msg.role,
                     "content": [content_block]

@@ -1,36 +1,40 @@
-# ---------- Stage 1: builder ----------
+# ── Stage 1: Install dependencies ─────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-WORKDIR /build
-
-# Install dependencies first (cached layer)
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
-
-# Copy application source
-COPY app/ app/
-COPY alembic/ alembic/
-COPY alembic.ini .
-
-# ---------- Stage 2: runtime ----------
-FROM python:3.12-slim AS runtime
-
-RUN groupadd --system appuser && useradd --system --gid appuser appuser
+# WHY: uv is much faster than pip for dependency resolution
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Copy virtualenv and source from builder
-COPY --from=builder /build/.venv /app/.venv
-COPY --from=builder /build/app ./app
-COPY --from=builder /build/alembic ./alembic
-COPY --from=builder /build/alembic.ini .
+# Copy dependency files first for layer caching
+COPY pyproject.toml uv.lock* ./
 
+# Install production dependencies only (no dev extras)
+RUN uv sync --no-dev --frozen 2>/dev/null || uv sync --no-dev
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Copy the virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code
+COPY app/ ./app/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./
+
+# Add venv to PATH so `python` resolves to the venv python
 ENV PATH="/app/.venv/bin:$PATH"
-
-USER appuser
+# WHY: Prevents Python from buffering stdout/stderr, so logs appear immediately
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Health check against the /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# Run with uvicorn — workers configurable via $WEB_CONCURRENCY
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

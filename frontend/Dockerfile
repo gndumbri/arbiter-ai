@@ -1,42 +1,52 @@
-# ---------- Stage 1: deps ----------
-FROM node:20-alpine AS deps
+# ── Stage 1: Install dependencies ─────────────────────────────────────────────
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+# WHY: --legacy-peer-deps is needed because Next.js 16 / React 19 has
+# peer dependency conflicts with older packages (e.g. @auth/core).
+RUN npm install --legacy-peer-deps
 
-# ---------- Stage 2: builder ----------
-FROM node:20-alpine AS builder
+# ── Stage 2: Build ───────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG NEXT_PUBLIC_API_URL=""
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# WHY: Next.js needs these at BUILD time for static optimization.
+# Runtime secrets are injected via environment variables at container start.
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
-# ---------- Stage 3: runtime ----------
-FROM node:20-alpine AS runtime
-
-RUN addgroup --system --gid 1001 appuser && \
-    adduser --system --uid 1001 appuser
+# ── Stage 3: Runtime ─────────────────────────────────────────────────────────
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-COPY --from=builder --chown=appuser:appuser /app/.next/standalone ./
-COPY --from=builder --chown=appuser:appuser /app/.next/static ./.next/static
-COPY --from=builder --chown=appuser:appuser /app/public ./public
-
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# WHY: Run as non-root for security (principle of least privilege)
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
+# Copy only the build output and necessary files
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-USER appuser
-
-EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
 CMD ["node", "server.js"]
