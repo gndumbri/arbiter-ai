@@ -57,6 +57,26 @@ When `frontend/package.json` or `frontend/package-lock.json` change (adding, rem
 - [ ] `docker compose build frontend` (or `backend`) succeeds
 - [ ] App starts correctly in the container
 
+### Build Readiness Check
+
+**Every time code changes are detected in `frontend/` or `backend/`, you MUST perform a build readiness check before considering the task complete.** This applies to all changes — not just dependency updates.
+
+**Frontend (`frontend/`) — verify all of the following:**
+1. Every `import` in changed/new files resolves to a package in `package.json` or a local file that exists
+2. All referenced local components (`@/components/`, `@/hooks/`, `@/lib/`) exist
+3. `next.config.ts` still has `output: "standalone"` (required for Docker)
+4. `node:XX-alpine` in `frontend/Dockerfile` matches local Node major version
+5. `package-lock.json` lockfile version is compatible with the npm version in the Dockerfile
+
+**Backend (`backend/`) — verify all of the following:**
+1. Every `import` in changed/new files resolves to a package in `pyproject.toml` or a local module that exists
+2. New routes are registered in `app/main.py` via `app.include_router()`
+3. New modules have `__init__.py` files in their directories
+4. `uv.lock` is present and up to date
+5. `python:XX-slim` in `backend/Dockerfile` matches the required Python version in `pyproject.toml`
+
+**If any check fails, fix the issue before proceeding.**
+
 ## Architecture
 
 - **Backend:** Python 3.12+ / FastAPI — `backend/app/`
