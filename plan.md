@@ -96,6 +96,7 @@ users (
   tier          TEXT NOT NULL DEFAULT 'FREE' CHECK (tier IN ('FREE', 'PRO')),
   stripe_customer_id TEXT,       -- Created on first Stripe interaction
   stripe_subscription_id TEXT,   -- Active subscription ID (NULL for FREE)
+  default_ruling_privacy TEXT NOT NULL DEFAULT 'PRIVATE',  -- PRIVATE, PARTY, PUBLIC
   tier_updated_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ DEFAULT now(),
   updated_at    TIMESTAMPTZ DEFAULT now()

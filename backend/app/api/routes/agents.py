@@ -63,7 +63,7 @@ async def list_agents(user: CurrentUser, db: DbSession):
                 if s.active_ruleset_ids
                 else None
             ),
-            "active": s.expires_at > now,
+            "active": s.expires_at is not None and s.expires_at > now,
         }
         for s in sessions
     ]

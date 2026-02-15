@@ -79,7 +79,13 @@ class ProviderRegistry:
         self._ensure_providers_loaded()
 
     def _ensure_providers_loaded(self) -> None:
-        """Import all provider modules to trigger registration."""
+        """Import all provider modules to trigger registration.
+
+        Each provider module calls ``register_provider()`` on import,
+        which adds it to the global factory maps. We import inside
+        try/except so the app still works if a provider's dependencies
+        aren't installed (e.g., Cohere SDK in a dev environment).
+        """
         try:
             from app.core.providers import openai_llm  # noqa: F401
         except ImportError:
@@ -116,6 +122,18 @@ class ProviderRegistry:
             from app.core.providers import pg_vector_store  # noqa: F401
         except ImportError:
             logger.debug("pg_vector_store provider not available")
+
+        # ─── Mock providers (always available — no external deps) ──────────
+        # WHY: Mock providers have zero external dependencies, so they
+        # should never fail to import. We still wrap in try/except for
+        # consistency with the pattern above.
+        try:
+            from app.core.providers import mock_llm  # noqa: F401
+            from app.core.providers import mock_embedding  # noqa: F401
+            from app.core.providers import mock_vector_store  # noqa: F401
+            from app.core.providers import mock_reranker  # noqa: F401
+        except ImportError:
+            logger.debug("mock providers not available")
 
     def _resolve(
         self,
