@@ -22,3 +22,6 @@ db_allocated_storage = 20
 db_name              = "arbiter"
 db_username          = "arbiter"
 db_password          = "CHANGE_ME_TO_A_STRONG_PASSWORD"
+
+# ElastiCache Redis (cache.t4g.micro = free-tier eligible)
+redis_node_type = "cache.t4g.micro"
