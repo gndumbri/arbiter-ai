@@ -181,6 +181,9 @@ See these templates:
 | `OPEN_RULES_FORCE_REINDEX` | sandbox+ | Force rebuild vectors even if unchanged       |
 
 When deploying to ECS with Secrets Manager JSON-key injection, only map keys your runtime actually uses. For Bedrock + pgvector, do not include `PINECONE_API_KEY` in task-definition `secrets`.
+For split backend/frontend DB drivers in AWS, keep both keys in the secret payload:
+- `DATABASE_URL` (backend, asyncpg)
+- `FRONTEND_DATABASE_URL` (frontend, postgres sync driver)
 
 ### Frontend (`frontend/.env`)
 
@@ -190,6 +193,7 @@ When deploying to ECS with Secrets Manager JSON-key injection, only map keys you
 | `AUTH_SECRET`     | ✅       | JWT signing key (must match backend) |
 | `AUTH_TRUST_HOST` | Dev only | Set to `true` for localhost          |
 | `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
+| `NEXT_PUBLIC_API_URL` | Recommended | Backend API base (`/api/v1` recommended in prod) |
 | `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
 | `BREVO_API_KEY`   | Optional in sandbox, required in production | Magic-link provider key |
 | `EMAIL_FROM`      | Optional | Sender address (default `noreply@arbiter-ai.com`) |

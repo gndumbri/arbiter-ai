@@ -109,11 +109,13 @@ The frontend needs these env vars in all modes:
 AUTH_SECRET=<must-match-backend-NEXTAUTH_SECRET>
 AUTH_TRUST_HOST=true          # Required for non-production hosts
 NEXTAUTH_URL=http://localhost:3000   # Or your production URL
+NEXT_PUBLIC_API_URL=/api/v1          # Recommended when ALB routes /api/* to backend
 DATABASE_URL=postgresql://arbiter:arbiter_dev@localhost:5432/arbiter
 ```
 
 > [!IMPORTANT]
 > `AUTH_SECRET` (frontend) and `NEXTAUTH_SECRET` (backend) **must be the same value**. They are the JWT signing key shared between NextAuth and the FastAPI JWT validator.
+> `NEXT_PUBLIC_API_URL` is a build-time variable for Next.js client bundles. Ensure it is injected during Docker build (not only at runtime).
 
 ## Step 1: Create Infrastructure
 
@@ -166,6 +168,7 @@ aws secretsmanager create-secret \
   --name arbiter-ai/production \
   --secret-string '{
     "DATABASE_URL": "postgresql+asyncpg://arbiter:<PW>@<RDS_ENDPOINT>:5432/arbiter",
+    "FRONTEND_DATABASE_URL": "postgresql://arbiter:<PW>@<RDS_ENDPOINT>:5432/arbiter",
     "REDIS_URL": "redis://<ELASTICACHE_ENDPOINT>:6379/0",
     "APP_MODE": "production",
     "LLM_PROVIDER": "bedrock",
@@ -188,7 +191,8 @@ aws secretsmanager create-secret \
     "OPEN_RULES_SYNC_CRON": "45 4 * * *",
     "OPEN_RULES_MAX_DOCUMENTS": "20",
     "OPEN_RULES_ALLOWED_LICENSES": "creative commons,open gaming license,orc",
-    "OPEN_RULES_FORCE_REINDEX": "false"
+    "OPEN_RULES_FORCE_REINDEX": "false",
+    "BREVO_API_KEY": "xkeysib-... (optional in sandbox)"
   }'
 ```
 
@@ -211,7 +215,7 @@ docker tag arbiter-ai/backend:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.co
 docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/arbiter-ai/backend:latest
 
 # Build and push frontend
-docker build -t arbiter-ai/frontend ./frontend
+docker build --build-arg NEXT_PUBLIC_API_URL=/api/v1 -t arbiter-ai/frontend ./frontend
 docker tag arbiter-ai/frontend:latest <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/arbiter-ai/frontend:latest
 docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/arbiter-ai/frontend:latest
 ```

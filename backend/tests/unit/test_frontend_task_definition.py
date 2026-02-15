@@ -42,3 +42,22 @@ def test_frontend_taskdef_sets_app_mode() -> None:
     env_map = {item["name"]: item["value"] for item in environment}
 
     assert env_map.get("APP_MODE") in {"sandbox", "production"}
+
+
+def test_frontend_taskdef_includes_api_base_and_nextauth_url() -> None:
+    taskdef = _load_frontend_taskdef()
+    environment = taskdef["containerDefinitions"][0].get("environment", [])
+    env_map = {item["name"]: item["value"] for item in environment}
+
+    assert env_map.get("NEXT_PUBLIC_API_URL")
+    assert env_map.get("NEXTAUTH_URL")
+    assert "AUTH_URL" not in env_map
+
+
+def test_frontend_taskdef_healthcheck_does_not_require_curl() -> None:
+    taskdef = _load_frontend_taskdef()
+    health = taskdef["containerDefinitions"][0].get("healthCheck", {})
+    command = " ".join(health.get("command", []))
+
+    assert "curl" not in command
+    assert "fetch('http://localhost:3000/')" in command

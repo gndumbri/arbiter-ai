@@ -9,6 +9,11 @@ resource "aws_lb" "main" {
   tags = { Name = "${var.project_name}-alb" }
 }
 
+locals {
+  use_https_listener = var.alb_certificate_arn != ""
+  rules_listener_arn = local.use_https_listener ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
+}
+
 # --- Target Groups ---
 resource "aws_lb_target_group" "backend" {
   name        = "${var.project_name}-backend-tg"
@@ -54,6 +59,35 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
+  dynamic "default_action" {
+    for_each = local.use_https_listener ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+
+  dynamic "default_action" {
+    for_each = local.use_https_listener ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.frontend.arn
+    }
+  }
+}
+
+resource "aws_lb_listener" "https" {
+  count             = local.use_https_listener ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.alb_certificate_arn
+
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.frontend.arn
@@ -63,7 +97,7 @@ resource "aws_lb_listener" "http" {
 # WHY: NextAuth routes (/api/auth/*) are handled by the frontend (Next.js),
 # not the backend. This must evaluate before the catch-all /api/* rule.
 resource "aws_lb_listener_rule" "nextauth" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = local.rules_listener_arn
   priority     = 50
 
   action {
@@ -79,7 +113,7 @@ resource "aws_lb_listener_rule" "nextauth" {
 }
 
 resource "aws_lb_listener_rule" "api" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = local.rules_listener_arn
   priority     = 100
 
   action {
@@ -95,7 +129,7 @@ resource "aws_lb_listener_rule" "api" {
 }
 
 resource "aws_lb_listener_rule" "health" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = local.rules_listener_arn
   priority     = 200
 
   action {
@@ -111,7 +145,7 @@ resource "aws_lb_listener_rule" "health" {
 }
 
 resource "aws_lb_listener_rule" "docs" {
-  listener_arn = aws_lb_listener.http.arn
+  listener_arn = local.rules_listener_arn
   priority     = 300
 
   action {

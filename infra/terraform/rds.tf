@@ -50,9 +50,9 @@ resource "aws_db_instance" "main" {
 
   multi_az            = false
   publicly_accessible = false
-  skip_final_snapshot = var.environment != "prod"
+  skip_final_snapshot = var.environment != "production"
 
-  final_snapshot_identifier = var.environment == "prod" ? "${var.project_name}-db-final" : null
+  final_snapshot_identifier = var.environment == "production" ? "${var.project_name}-db-final" : null
 
   backup_retention_period = 7
   backup_window           = "03:00-04:00"

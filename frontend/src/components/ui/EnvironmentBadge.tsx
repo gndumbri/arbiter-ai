@@ -27,9 +27,10 @@ import { useEffect, useState } from "react";
 
 /** ─── Configuration ──────────────────────────────────────────────────────── */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace("/api/v1", "") ||
-  "http://localhost:8000";
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL?.trim();
+const API_BASE = RAW_API_URL
+  ? RAW_API_URL.replace(/\/api\/v1\/?$/, "")
+  : (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 /**
  * Badge styling per environment mode.

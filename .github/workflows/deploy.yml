@@ -102,8 +102,9 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           TAG: ${{ steps.meta.outputs.tag }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL || '/api/v1' }}
         run: |
-          docker build --build-arg NEXT_PUBLIC_API_URL="" -t $REGISTRY/$PROJECT_NAME-frontend:$TAG -t $REGISTRY/$PROJECT_NAME-frontend:latest -f frontend/Dockerfile frontend/
+          docker build --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" -t $REGISTRY/$PROJECT_NAME-frontend:$TAG -t $REGISTRY/$PROJECT_NAME-frontend:latest -f frontend/Dockerfile frontend/
           docker push $REGISTRY/$PROJECT_NAME-frontend:$TAG
           docker push $REGISTRY/$PROJECT_NAME-frontend:latest
 
