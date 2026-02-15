@@ -1,20 +1,15 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-# WHY: Must match the Node version used locally to generate package-lock.json.
-# A mismatch between local npm (which writes the lockfile) and Docker npm
-# causes "npm ci" to fail or produce a different dependency tree.
-FROM node:25-alpine AS deps
+FROM node:22-alpine AS deps
 
 WORKDIR /app
 
-# WHY: .npmrc sets legacy-peer-deps=true so both local dev and Docker behave
-# the same without needing CLI flags.
-COPY .npmrc package.json package-lock.json ./
-# WHY: npm ci does a clean install strictly from the lockfile, which is faster
-# and more deterministic than npm install in Docker builds.
-RUN npm ci
+COPY package.json package-lock.json* ./
+# WHY: --legacy-peer-deps is needed because Next.js 16 / React 19 has
+# peer dependency conflicts with older packages (e.g. @auth/core).
+RUN npm install --legacy-peer-deps
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:25-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -28,7 +23,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:25-alpine AS runner
+FROM node:22-alpine AS runner
 
 WORKDIR /app
 
