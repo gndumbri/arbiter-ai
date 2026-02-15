@@ -95,8 +95,8 @@ export default function CatalogPage() {
 
       setAddedSlugs((prev) => new Set(prev).add(game.game_slug));
       toast({
-        title: "Game Added!",
-        description: `${game.game_name} has been added to your library.`,
+        title: "Loot Acquired!",
+        description: `${game.game_name} has been added to your shelf.`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to add game";
@@ -133,21 +133,21 @@ export default function CatalogPage() {
     const isAdding = addingSlugs.has(game.game_slug);
 
     if (isInLibrary) {
-      return { disabled: true, icon: <Check className="mr-2 h-4 w-4" />, label: "In Library" };
+      return { disabled: true, icon: <Check className="mr-2 h-4 w-4" />, label: "Claimed ✓" };
     }
     if (isAdding) {
-      return { disabled: true, icon: <Loader2 className="mr-2 h-4 w-4 animate-spin" />, label: "Adding..." };
+      return { disabled: true, icon: <Loader2 className="mr-2 h-4 w-4 animate-spin" />, label: "Claiming..." };
     }
-    return { disabled: false, icon: <Plus className="mr-2 h-4 w-4" />, label: "Add to Library" };
+    return { disabled: false, icon: <Plus className="mr-2 h-4 w-4" />, label: "Claim" };
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Game Catalog</h1>
+          <h1 className="text-3xl font-bold tracking-tight">The Armory</h1>
           <p className="text-muted-foreground mt-1">
-            Browse official rulesets or add a game to your library.
+            Browse 130+ games. Claim the ones you play.
           </p>
         </div>
       </div>
@@ -155,7 +155,7 @@ export default function CatalogPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search games by name or publisher..."
+          placeholder="Search by game name or publisher..."
           className="pl-10"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -169,9 +169,9 @@ export default function CatalogPage() {
       ) : filtered.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <Gamepad2 className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">No games found</h3>
+          <h3 className="text-lg font-semibold">No quests match that search</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            Try a different search term.
+            Try a different incantation.
           </p>
         </div>
       ) : (

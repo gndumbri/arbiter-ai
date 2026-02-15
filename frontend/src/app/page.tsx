@@ -80,10 +80,10 @@ export default function LandingPage() {
           <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
             <div className="flex flex-col items-center space-y-4 text-center mb-12">
               <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight">
-                Features
+                Your Arsenal
               </h2>
               <p className="max-w-2xl text-muted-foreground sm:text-lg leading-relaxed">
-                Built with advanced RAG technology to understand complex rule interactions.
+                Everything you need to settle the score — no arguing required.
               </p>
             </div>
 
@@ -94,9 +94,9 @@ export default function LandingPage() {
                     <BookOpen className="h-6 w-6 text-primary" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="font-bold text-lg">Rule Ingestion</h3>
+                    <h3 className="font-bold text-lg">📜 Tome Upload</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Upload your rulebooks as PDFs and get instant semantic indexing for lightning-fast lookups.
+                      Feed it your rulebooks — PDFs go in, indexed knowledge comes out. Lightning-fast lookups.
                     </p>
                   </div>
                 </div>
@@ -108,9 +108,9 @@ export default function LandingPage() {
                     <Bot className="h-6 w-6 text-secondary" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="font-bold text-lg">AI Game Master</h3>
+                    <h3 className="font-bold text-lg">⚖️ AI Arbiter</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Ask complex rules questions and get authoritative verdicts with page-level citations.
+                      Ask the hard questions. Get verdicts with page-level citations, not vibes.
                     </p>
                   </div>
                 </div>
@@ -122,9 +122,9 @@ export default function LandingPage() {
                     <CheckCircle className="h-6 w-6 text-green-500" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="font-bold text-lg">Conflict Resolution</h3>
+                    <h3 className="font-bold text-lg">🛡️ Dispute Settler</h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Handles errata and expansion conflicts automatically. No more table-flip arguments.
+                      Errata vs. expansion vs. house rule? Sorted. No tables were flipped.
                     </p>
                   </div>
                 </div>
@@ -139,7 +139,7 @@ export default function LandingPage() {
           <div className="flex items-center space-x-2">
             <Shield className="h-4 w-4 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              &copy; {new Date().getFullYear()} Arbiter AI. All rights reserved.
+              &copy; {new Date().getFullYear()} Arbiter AI. No dice were harmed in the making of this platform.
             </p>
           </div>
         </div>

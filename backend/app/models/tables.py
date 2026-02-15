@@ -20,6 +20,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector
+except ImportError:
+    # WHY: pgvector may not be installed in all environments (e.g., CI without Postgres).
+    # Fallback to a no-op so the module at least imports.
+    Vector = None  # type: ignore[assignment,misc]
+
 
 class Base(DeclarativeBase):
     """Base class for all ORM models."""
@@ -248,6 +255,42 @@ class OfficialRuleset(Base):
     )
 
     publisher: Mapped[Publisher] = relationship(back_populates="official_rulesets")
+
+
+class RuleChunk(Base):
+    """A chunk of rules text with its vector embedding.
+
+    WHY: This table replaces Pinecone — embeddings live in Postgres via pgvector.
+    Each chunk is a ~1500-char excerpt from a ruleset, with a 1024-dim embedding
+    (matching Bedrock Titan v2's output dimension).
+
+    The adjudication pipeline queries this table using L2 distance (<->)
+    filtered by ruleset_id to find relevant rules for a user's question.
+    """
+    __tablename__ = "rule_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    ruleset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("official_rulesets.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    section_header: Mapped[str | None] = mapped_column(String, nullable=True)
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # WHY: Vector(1024) matches Bedrock Titan Embed v2 output dimension.
+    # pgvector's <-> operator enables fast L2 nearest-neighbor search.
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(1024) if Vector else Text,  # type: ignore[arg-type]
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class Subscription(Base):
