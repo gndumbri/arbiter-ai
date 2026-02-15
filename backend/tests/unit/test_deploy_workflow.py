@@ -40,3 +40,9 @@ def test_deploy_workflow_loads_environment_tfvars_when_present() -> None:
 
     assert "TF_VARS_FILE=\"environments/${DEPLOY_MODE}.tfvars\"" in text
     assert "PLAN_ARGS+=(\"-var-file=${{ steps.context.outputs.tf_vars_file }}\")" in text
+
+
+def test_deploy_workflow_imports_existing_ecs_services_before_plan() -> None:
+    text = _read_workflow()
+
+    assert 'terraform import "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true' in text

@@ -177,6 +177,17 @@ jobs:
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
 
+      - name: Import existing ECS services
+        run: |
+          # Best-effort import: If services exist but aren't in state, bring them in.
+          # If they don't exist (fresh deploy) or are already in state, this fails safely (|| true).
+          # The subsequent 'plan' will determine the actual required changes.
+          PROJECT_NAME="${{ env.PROJECT_NAME }}"
+          for svc in backend frontend worker beat; do
+            echo "Attempting import for aws_ecs_service.${svc}..."
+            terraform import "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true
+          done
+
       - name: Determine image tags
         id: tags
         run: |
@@ -190,6 +201,12 @@ jobs:
           else
             echo "frontend_tag=latest" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Import existing ECS services (best effort)
+        run: |
+          for svc in backend frontend worker beat; do
+            terraform import "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true
+          done
 
       - name: Terraform Plan
         run: |
