@@ -86,6 +86,12 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
+      { name = "AUTH_TRUST_HOST", value = "true" },
+    ]
+
+    secrets = [
+      { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:AUTH_SECRET::" },
+      { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
     ]
 
     logConfiguration = {
