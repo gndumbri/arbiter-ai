@@ -22,7 +22,13 @@ depends_on = None
 def upgrade() -> None:
     # WHY: pgvector extension MUST be created before any Vector columns.
     # Requires superuser or CREATE EXTENSION privilege on the database.
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except Exception as exc:
+        raise RuntimeError(
+            "pgvector extension is not available on this Postgres instance. "
+            "Install/enable pgvector (or use a pgvector-enabled image) before running migrations."
+        ) from exc
 
     # ── rule_chunks table with pgvector embedding ─────────────────────────
     op.create_table(
@@ -60,4 +66,3 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("rule_chunks")
     # NOTE: We don't drop the vector extension — it may be used by other tables.
-

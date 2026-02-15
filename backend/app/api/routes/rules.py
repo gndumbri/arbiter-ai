@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import re
 import shutil
-import tempfile
 import uuid
 from pathlib import Path
 
 import structlog
 from fastapi import APIRouter, Form, HTTPException, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
-from app.api.deps import DbSession, GetSettings
+from app.api.abuse_detection import AbuseDetector
+from app.api.deps import CurrentUser, DbSession, GetSettings, RedisDep
+from app.api.rate_limit import RateLimitDep
 from app.models.schemas import ErrorResponse
-from app.models.tables import RulesetMetadata
+from app.models.tables import RulesetMetadata, Session
 from app.workers.tasks import ingest_ruleset
 
 router = APIRouter(prefix="/api/v1", tags=["rules"])
@@ -31,8 +33,11 @@ logger = structlog.get_logger()
 async def upload_ruleset(
     session_id: uuid.UUID,
     file: UploadFile,
+    user: CurrentUser,
     db: DbSession,
     settings: GetSettings,
+    limiter: RateLimitDep,
+    redis: RedisDep,
     game_name: str = Form("Unknown Game"),
     source_type: str = Form("BASE"),
 ) -> dict:
@@ -41,11 +46,68 @@ async def upload_ruleset(
     The file is validated, classified, parsed, chunked, embedded,
     and indexed asynchronously. Returns a tracking ID immediately.
     """
+    # ── Input validation ──────────────────────────────────────────────────
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=422,
             detail="Only PDF files are accepted",
         )
+
+    # ── Rate limiting + abuse detection ───────────────────────────────────
+    # WHY: Uploads are expensive (storage + embedding pipeline). Limit daily
+    # count per tier and detect rapid-fire upload abuse patterns.
+    await limiter.check_and_increment(
+        user_id=str(user["id"]),
+        tier=user["tier"],
+        category="upload",
+    )
+
+    # Detect upload velocity abuse (>5 in 5 minutes = bot behavior)
+    detector = AbuseDetector(redis)
+    await detector.check_upload_velocity(str(user["id"]))
+
+    # ── Per-user active ruleset cap ───────────────────────────────────────
+    # WHY: Prevent storage abuse. FREE users: 10 active rulesets max.
+    max_active = 50 if user["tier"] in ("PRO", "ADMIN") else 10
+    count_result = await db.execute(
+        select(func.count(RulesetMetadata.id)).where(
+            RulesetMetadata.user_id == user["id"],
+            RulesetMetadata.status.notin_(["FAILED", "DELETED"]),
+        )
+    )
+    active_count = count_result.scalar_one() or 0
+    if active_count >= max_active:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You've reached the max number of rulesets ({max_active}). "
+            "Delete some old ones or upgrade your plan!",
+        )
+
+    # WHY: Validate source_type to prevent arbitrary values being stored.
+    allowed_source_types = {"BASE", "EXPANSION", "ERRATA"}
+    if source_type not in allowed_source_types:
+        raise HTTPException(
+            status_code=422,
+            detail=f"source_type must be one of: {', '.join(sorted(allowed_source_types))}",
+        )
+
+    # Enforce session ownership before accepting upload bytes.
+    session_result = await db.execute(
+        select(Session).where(
+            Session.id == session_id,
+            Session.user_id == user["id"],
+        )
+    )
+    session_row = session_result.scalar_one_or_none()
+    if not session_row:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # WHY: Sanitize the filename to prevent path traversal attacks.
+    # A malicious filename like "../../etc/passwd" would write outside
+    # the temp directory. We strip path separators and non-safe characters.
+    safe_name = re.sub(r"[^\w.\-]", "_", Path(file.filename).name)
+    if not safe_name.lower().endswith(".pdf"):
+        safe_name = f"{safe_name}.pdf"
 
     # Create ruleset_metadata entry
     ruleset_id = uuid.uuid4()
@@ -56,6 +118,7 @@ async def upload_ruleset(
     ruleset = RulesetMetadata(
         id=ruleset_id,
         session_id=session_id,
+        user_id=user["id"],
         filename=file.filename,
         game_name=game_name,
         file_hash="pending",
@@ -67,13 +130,37 @@ async def upload_ruleset(
     await db.flush()
 
     # Save upload to temp directory
-    tmp_dir = Path(tempfile.mkdtemp(prefix="arbiter_"))
-    tmp_path = tmp_dir / file.filename
+    # WHY: Celery workers need to read the uploaded file; use a configured
+    # shared mount path rather than Python's random temp dir.
+    tmp_dir = Path(settings.uploads_dir) / str(ruleset_id)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    tmp_path = tmp_dir / safe_name
+    max_bytes = 20 * 1024 * 1024  # 20MB upload cap
     try:
+        # WHY: Read in chunks with a hard cap to prevent DoS via huge uploads.
+        # The ingestion pipeline also checks size, but catching it here avoids
+        # writing a multi-GB file to disk first.
+        bytes_written = 0
         with open(tmp_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+            while chunk := await file.read(8192):
+                bytes_written += len(chunk)
+                if bytes_written > max_bytes:
+                    f.close()
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"That rulebook is too hefty! Max upload size is {max_bytes // (1024 * 1024)}MB.",
+                    )
+                f.write(chunk)
+    except HTTPException:
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("File save failed for session %s", session_id)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Oops — the Arbiter dropped your rulebook. Please try uploading again!",
+        ) from exc
 
     # Dispatch async ingestion task
     try:
@@ -83,7 +170,7 @@ async def upload_ruleset(
         ingest_ruleset.delay(
             file_path=str(tmp_path),
             ruleset_id=str(ruleset_id),
-            user_id="anonymous",  # TODO(kasey, 2026-02-14): get from auth
+            user_id=str(user["id"]),
             session_id=str(session_id),
             game_name=game_name,
             source_type=source_type,
@@ -117,11 +204,15 @@ async def upload_ruleset(
 @router.get("/rulesets/{ruleset_id}/status")
 async def get_ruleset_status(
     ruleset_id: uuid.UUID,
+    user: CurrentUser,
     db: DbSession,
 ) -> dict:
     """Get the processing status of a ruleset."""
     result = await db.execute(
-        select(RulesetMetadata).where(RulesetMetadata.id == ruleset_id)
+        select(RulesetMetadata).where(
+            RulesetMetadata.id == ruleset_id,
+            RulesetMetadata.user_id == user["id"],
+        )
     )
     ruleset = result.scalar_one_or_none()
 
@@ -140,13 +231,19 @@ async def get_ruleset_status(
 
 @router.get("/rulesets")
 async def list_rulesets(
+    user: CurrentUser,
     db: DbSession,
+    session_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 100,
 ) -> list[dict]:
-    """List all uploaded rulesets."""
+    """List the current user's uploaded rulesets."""
+    stmt = select(RulesetMetadata).where(RulesetMetadata.user_id == user["id"])
+    if session_id:
+        stmt = stmt.where(RulesetMetadata.session_id == session_id)
+
     result = await db.execute(
-        select(RulesetMetadata)
+        stmt
         .order_by(RulesetMetadata.created_at.desc())
         .offset(skip)
         .limit(limit)

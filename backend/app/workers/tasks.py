@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
+from pathlib import Path
 from uuid import UUID
 
 from celery import shared_task
@@ -58,7 +60,6 @@ async def _run_ingest(
                 .values(
                     status="INDEXED",
                     chunk_count=result.chunk_count,
-                    pinecone_namespace=result.namespace,
                     file_hash=result.file_hash,
                 )
             )
@@ -85,6 +86,9 @@ async def _run_ingest(
             )
             await db.commit()
         raise
+    finally:
+        # Remove now-empty per-ruleset upload directory.
+        shutil.rmtree(Path(file_path).parent, ignore_errors=True)
 
 
 @shared_task(bind=True, max_retries=3)

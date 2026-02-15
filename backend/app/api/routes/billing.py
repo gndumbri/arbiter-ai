@@ -173,6 +173,11 @@ async def create_checkout(body: CheckoutRequest, user: CurrentUser, db: DbSessio
             status_code=503,
             detail="Stripe not configured. Set STRIPE_SECRET_KEY.",
         )
+    if not settings.stripe_price_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe not configured. Set STRIPE_PRICE_ID.",
+        )
 
     # Configure stripe with the secret key for this request
     stripe.api_key = settings.stripe_secret_key
@@ -185,8 +190,8 @@ async def create_checkout(body: CheckoutRequest, user: CurrentUser, db: DbSessio
             payment_method_types=["card"],
             line_items=[{"price": settings.stripe_price_id, "quantity": 1}],
             mode="subscription",
-            success_url=f"{settings.allowed_origins}/settings?upgraded=true",
-            cancel_url=f"{settings.allowed_origins}/settings",
+            success_url=f"{settings.normalized_app_base_url}/settings?upgraded=true",
+            cancel_url=f"{settings.normalized_app_base_url}/settings",
             customer_email=user["email"],
             # WHY: client_reference_id lets us link the Stripe checkout back to
             # our internal user ID in the webhook handler.
@@ -210,7 +215,7 @@ async def create_checkout(body: CheckoutRequest, user: CurrentUser, db: DbSessio
         logger.exception("Stripe checkout creation failed: %s", exc)
         raise HTTPException(
             status_code=502,
-            detail=f"Stripe error: {exc.user_message or str(exc)}",
+            detail="The payment gods aren't cooperating right now. Please try again in a moment!",
         ) from exc
 
 
@@ -256,14 +261,14 @@ async def create_portal_session(user: CurrentUser, db: DbSession) -> dict:
     try:
         portal_session = stripe.billing_portal.Session.create(
             customer=sub.stripe_customer_id,
-            return_url=f"{settings.allowed_origins}/settings",
+            return_url=f"{settings.normalized_app_base_url}/settings",
         )
         return {"portal_url": portal_session.url}
     except stripe.StripeError as exc:
         logger.exception("Stripe portal creation failed: %s", exc)
         raise HTTPException(
             status_code=502,
-            detail=f"Stripe error: {exc.user_message or str(exc)}",
+            detail="The payment gods aren't cooperating right now. Please try again in a moment!",
         ) from exc
 
 
@@ -309,8 +314,13 @@ async def stripe_webhook(request: Request, db: DbSession) -> dict:
             logger.warning("Stripe webhook parse error: %s", exc)
             raise HTTPException(status_code=400, detail="Invalid payload") from exc
     else:
+        # WHY: Without signature verification, anyone could spoof webhook
+        # events and grant themselves PRO subscriptions. Block in production.
+        if settings.is_production:
+            logger.error("STRIPE_WEBHOOK_SECRET not set in production — rejecting webhook")
+            raise HTTPException(status_code=503, detail="Webhook signature verification not configured")
         # Development fallback: parse without verification
-        logger.warning("STRIPE_WEBHOOK_SECRET not set — webhook signature verification disabled")
+        logger.warning("STRIPE_WEBHOOK_SECRET not set — verification disabled (dev only)")
         try:
             event = json.loads(payload)
         except Exception as exc:

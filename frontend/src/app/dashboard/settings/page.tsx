@@ -125,6 +125,15 @@ function SettingsContent() {
 
   if (!user) return null; // Should be handled by middleware
 
+  const redirectToTrustedStripeUrl = (url: string) => {
+    const parsed = new URL(url);
+    const isStripeHost = parsed.hostname === "stripe.com" || parsed.hostname.endsWith(".stripe.com");
+    if (parsed.protocol !== "https:" || !isStripeHost) {
+      throw new Error("Unexpected redirect URL returned by billing service.");
+    }
+    window.location.assign(parsed.toString());
+  };
+
   /**
    * Save profile changes to the backend.
    * WHY: We call both api.updateProfile (persists to DB) and NextAuth's
@@ -139,7 +148,7 @@ function SettingsContent() {
         title: "Character Sheet Updated",
         description: "The scribe has noted your new identity in the grand ledger.",
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Critical Miss!",
         description: "Failed to update profile. The dice gods are displeased.",
@@ -162,7 +171,7 @@ function SettingsContent() {
     try {
       const result = await api.createCheckout("PRO");
       // Redirect to Stripe's hosted checkout page
-      window.location.href = result.checkout_url;
+      redirectToTrustedStripeUrl(result.checkout_url);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create checkout";
       toast({
@@ -197,7 +206,7 @@ function SettingsContent() {
       });
       // Sign out and redirect to landing page
       await signOut({ callbackUrl: "/" });
-    } catch (error) {
+    } catch {
       toast({
         title: "Deletion Failed",
         description: "Failed to retire your character. Please try again.",
@@ -327,7 +336,7 @@ function SettingsContent() {
               onClick={async () => {
                 try {
                   const result = await api.createPortalSession();
-                  window.location.href = result.portal_url;
+                  redirectToTrustedStripeUrl(result.portal_url);
                 } catch (error) {
                   toast({
                     title: "Portal Unavailable",

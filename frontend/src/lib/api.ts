@@ -10,7 +10,10 @@
 
 import { getSession } from "next-auth/react";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, "").endsWith("/api/v1")
+  ? RAW_API_BASE_URL.replace(/\/+$/, "")
+  : `${RAW_API_BASE_URL.replace(/\/+$/, "")}/api/v1`;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +92,37 @@ export interface GameRulingCount {
   count: number;
 }
 
+export interface AdminStats {
+  total_users: number;
+  total_sessions: number;
+  total_queries: number;
+  total_rulesets: number;
+  total_publishers: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  created_at: string | null;
+}
+
+export interface AdminPublisher {
+  id: string;
+  name: string;
+  slug: string;
+  contact_email: string;
+  verified: boolean;
+  created_at: string | null;
+}
+
+export interface AdminTier {
+  id: string;
+  name: string;
+  daily_query_limit: number;
+}
+
 export interface Agent {
   id: string;
   game_name: string;
@@ -119,18 +153,17 @@ export interface LibraryEntry {
 async function getAuthHeaders(): Promise<Record<string, string>> {
   try {
     const session = await getSession();
+    const sessionAccessToken = (session as { accessToken?: string } | null)?.accessToken;
+    if (sessionAccessToken) {
+      return { Authorization: `Bearer ${sessionAccessToken}` };
+    }
     if (session) {
-      // NextAuth stores the JWT in a cookie; we need to pass it as Bearer token.
-      // The session object itself doesn't contain the raw JWT, so we fetch it
-      // from the NextAuth JWT endpoint.
-      const res = await fetch("/api/auth/session");
+      // Backward-compatible fallback for older session callback payloads.
+      const res = await fetch("/api/auth/session", { cache: "no-store" });
       const sessionData = await res.json();
       if (sessionData?.accessToken) {
         return { Authorization: `Bearer ${sessionData.accessToken}` };
       }
-      // Fallback: use a custom JWT fetch from the token endpoint
-      // NextAuth exposes JWT via cookies, so the backend can also accept
-      // the session token cookie. For API calls, we'll encode session info.
     }
   } catch {
     // Session fetch failed — continue without auth
@@ -399,6 +432,23 @@ export const api = {
     });
   },
 
+  // ─── Admin ────────────────────────────────────────────────────────────────
+  getAdminStats: async () => {
+    return fetcher<AdminStats>("/admin/stats");
+  },
+
+  listAdminUsers: async () => {
+    return fetcher<AdminUser[]>("/admin/users");
+  },
+
+  listAdminPublishers: async () => {
+    return fetcher<AdminPublisher[]>("/admin/publishers");
+  },
+
+  listAdminTiers: async () => {
+    return fetcher<AdminTier[]>("/admin/tiers");
+  },
+
   // ─── User Profile ──────────────────────────────────────────────────────────
   getProfile: async () => {
     return fetcher<{ id: string; email: string; name: string | null; role: string; default_ruling_privacy: string }>("/users/me");
@@ -429,5 +479,4 @@ export interface AgentEntry {
   persona: string | null;
   created_at: string | null;
 }
-
 

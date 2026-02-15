@@ -156,7 +156,7 @@ async def add_to_library(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Game '{body.game_name}' is already in your library.",
+            detail="This game is already in your library.",
         )
 
     # Build official_ruleset_ids array from the single ID if provided

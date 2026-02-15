@@ -13,6 +13,7 @@ import uuid
 
 import structlog
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select, update
 
 from app.api.deps import CurrentUser, DbSession
@@ -27,6 +28,26 @@ from app.models.tables import (
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 logger = structlog.get_logger()
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+
+class UpdateUserRoleRequest(BaseModel):
+    """WHY: Pydantic model instead of raw dict prevents mass-assignment."""
+    role: str = Field(..., pattern="^(USER|ADMIN)$")
+
+
+class UpdatePublisherRequest(BaseModel):
+    """WHY: Validates publisher fields with length/email constraints."""
+    name: str | None = Field(None, min_length=1, max_length=200)
+    contact_email: EmailStr | None = None
+    verified: bool | None = None
+
+
+class UpdateTierRequest(BaseModel):
+    """WHY: Constrains daily_query_limit to a sane range (-1 = unlimited)."""
+    daily_query_limit: int = Field(..., ge=-1, le=10000)
 
 
 # ─── Admin Guard ───────────────────────────────────────────────────────────────
@@ -113,7 +134,7 @@ async def list_users(user: CurrentUser, db: DbSession) -> list[dict]:
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
     user_id: uuid.UUID,
-    body: dict,
+    body: UpdateUserRoleRequest,
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
@@ -125,27 +146,23 @@ async def update_user_role(
 
     Args:
         user_id: UUID of the user to update.
-        body: Dict with 'role' key set to 'USER' or 'ADMIN'.
+        body: UpdateUserRoleRequest with validated role.
 
     Returns:
         Confirmation dict with user_id and new role.
 
     Raises:
-        HTTPException: 400 if role value is invalid, 404 if user not found.
+        HTTPException: 404 if user not found.
     """
     _require_admin(user)
 
-    new_role = body.get("role", "USER")
-    if new_role not in ("USER", "ADMIN"):
-        raise HTTPException(status_code=400, detail="Role must be USER or ADMIN")
-
     result = await db.execute(
-        update(User).where(User.id == user_id).values(role=new_role)
+        update(User).where(User.id == user_id).values(role=body.role)
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return {"user_id": str(user_id), "role": new_role}
+    return {"user_id": str(user_id), "role": body.role}
 
 
 # ─── Publisher Management ──────────────────────────────────────────────────────
@@ -185,7 +202,7 @@ async def list_publishers(user: CurrentUser, db: DbSession) -> list[dict]:
 @router.patch("/publishers/{publisher_id}")
 async def update_publisher(
     publisher_id: uuid.UUID,
-    body: dict,
+    body: UpdatePublisherRequest,
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
@@ -197,7 +214,7 @@ async def update_publisher(
 
     Args:
         publisher_id: UUID of the publisher to update.
-        body: Dict with optional 'name', 'contact_email', 'verified' fields.
+        body: UpdatePublisherRequest with optional name, email, verified fields.
 
     Returns:
         Confirmation dict with publisher_id and list of updated field names.
@@ -207,14 +224,8 @@ async def update_publisher(
     """
     _require_admin(user)
 
-    # Only allow updating whitelisted fields to prevent mass-assignment
-    update_data = {}
-    if "name" in body:
-        update_data["name"] = body["name"]
-    if "contact_email" in body:
-        update_data["contact_email"] = body["contact_email"]
-    if "verified" in body:
-        update_data["verified"] = body["verified"]
+    # Only include fields that were explicitly set in the request
+    update_data = body.model_dump(exclude_unset=True)
 
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -260,7 +271,7 @@ async def list_tiers(user: CurrentUser, db: DbSession) -> list[dict]:
 @router.patch("/tiers/{tier_id}")
 async def update_tier(
     tier_id: uuid.UUID,
-    body: dict,
+    body: UpdateTierRequest,
     user: CurrentUser,
     db: DbSession,
 ) -> dict:
@@ -272,25 +283,22 @@ async def update_tier(
 
     Args:
         tier_id: UUID of the tier to update.
-        body: Dict with 'daily_query_limit' key (integer, -1 = unlimited).
+        body: UpdateTierRequest with validated daily_query_limit.
 
     Returns:
         Confirmation dict with tier_id and new daily_query_limit.
 
     Raises:
-        HTTPException: 400 if daily_query_limit missing, 404 if tier not found.
+        HTTPException: 404 if tier not found.
     """
     _require_admin(user)
-
-    if "daily_query_limit" not in body:
-        raise HTTPException(status_code=400, detail="daily_query_limit required")
 
     result = await db.execute(
         update(SubscriptionTier)
         .where(SubscriptionTier.id == tier_id)
-        .values(daily_query_limit=body["daily_query_limit"])
+        .values(daily_query_limit=body.daily_query_limit)
     )
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Tier not found")
 
-    return {"tier_id": str(tier_id), "daily_query_limit": body["daily_query_limit"]}
+    return {"tier_id": str(tier_id), "daily_query_limit": body.daily_query_limit}

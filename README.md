@@ -14,12 +14,11 @@ graph LR
         C[Celery Worker]
     end
     subgraph Data
-        D[(PostgreSQL 16)]
+        D[(PostgreSQL 16<br/>+ pgvector)]
         E[(Redis 7)]
-        F[(Pinecone)]
     end
     subgraph External
-        G[OpenAI / Anthropic]
+        G[AWS Bedrock<br/>Claude + Titan]
         H[Stripe]
         I[NextAuth]
     end
@@ -27,9 +26,8 @@ graph LR
     A -->|REST API| B
     B --> D
     B --> E
-    B --> F
     C --> E
-    C --> F
+    C --> D
     B --> G
     B --> H
     A --> I
@@ -38,28 +36,31 @@ graph LR
 | Layer         | Tech                                | Purpose                              |
 | ------------- | ----------------------------------- | ------------------------------------ |
 | Frontend      | Next.js 16, React 19, TypeScript    | PWA with App Router                  |
-| Backend       | FastAPI, Python 3.12+, SQLAlchemy 2 | REST API + async workers             |
-| Auth          | NextAuth.js (JWT strategy)          | Session management + JWT validation  |
+| Backend       | FastAPI, Python 3.14+, SQLAlchemy 2 | REST API + async workers             |
+| Auth          | NextAuth.js v5 (JWT strategy)       | Session management + JWT validation  |
 | Billing       | Stripe Checkout + Webhooks          | PRO tier subscriptions               |
-| Vector DB     | Pinecone Serverless                 | Namespace-per-ruleset embeddings     |
+| Vector DB     | pgvector (PostgreSQL extension)     | Namespace-per-ruleset embeddings     |
 | Relational DB | PostgreSQL 16                       | Users, sessions, rulesets, audit log |
 | Queue         | Redis 7 + Celery                    | Async PDF ingestion pipeline         |
-| LLM           | OpenAI (default), Anthropic (alt)   | RAG adjudication engine              |
+| LLM           | AWS Bedrock (Claude 3.5 Sonnet)     | RAG adjudication engine              |
+| Embeddings    | AWS Bedrock (Titan Embed v2)        | Document + query embeddings          |
+| Reranker      | FlashRank (local, no API key)       | Retrieval result reranking           |
 
 ## Prerequisites
 
 - **Node.js** 20+ and npm
-- **Python** 3.12+ and [uv](https://docs.astral.sh/uv/)
+- **Python** 3.14+ and [uv](https://docs.astral.sh/uv/)
 - **Docker** and Docker Compose
-- API keys for OpenAI and Pinecone (minimum viable)
+- AWS credentials for Bedrock (or set `APP_MODE=mock` for frontend-only dev)
 
 ## Quick Start
 
 ```bash
 # 1. Clone and configure
 git clone <repo-url> && cd arbiter-ai
-cp .env.example .env
-# Edit .env with your API keys (see Environment Variables below)
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+# Edit .env files with your values (see App Modes below)
 
 # 2. Start infrastructure (Postgres + Redis)
 make up
@@ -95,23 +96,71 @@ docker compose up --build
 | `make lint`     | Run ruff + mypy                      |
 | `make dev`      | Start Docker + print instructions    |
 
+## App Modes
+
+The `APP_MODE` env var controls the entire runtime tier. Set it in `backend/.env`:
+
+| Mode         | DB  | Auth | LLM/Embeddings | Stripe    | Use Case                          |
+| ------------ | --- | ---- | -------------- | --------- | --------------------------------- |
+| `mock`       | ❌  | ❌   | ❌ (faked)     | ❌        | Frontend-only dev, no keys needed |
+| `sandbox`    | ✅  | ✅   | ✅ (Bedrock)   | Test keys | Full local dev (default)          |
+| `production` | ✅  | ✅   | ✅ (Bedrock)   | Live keys | AWS deployment                    |
+
+**Frontend-only dev** — just want to work on the UI?
+
+```bash
+# backend/.env
+APP_MODE=mock
+```
+
+No database, no Redis, no API keys. All data is faked.
+
+**Full local dev** — testing the real pipeline?
+
+```bash
+# backend/.env
+APP_MODE=sandbox
+DATABASE_URL=postgresql+asyncpg://arbiter:arbiter_dev@localhost:5432/arbiter
+NEXTAUTH_SECRET=changeme_in_production_secret_key_12345
+# AWS credentials for Bedrock (set via env, profile, or IAM role)
+```
+
+**Production** — see [docs/aws-deployment.md](docs/aws-deployment.md).
+
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in your values. Key groups:
+See these templates:
 
-| Variable                | Required    | Description                                     |
-| ----------------------- | ----------- | ----------------------------------------------- |
-| `OPENAI_API_KEY`        | ✅          | LLM for RAG adjudication                        |
-| `PINECONE_API_KEY`      | ✅          | Vector store for embeddings                     |
-| `DATABASE_URL`          | ✅          | PostgreSQL connection string                    |
-| `NEXTAUTH_SECRET`       | ✅          | Must match frontend NextAuth config             |
-| `STRIPE_SECRET_KEY`     | For billing | Stripe API key                                  |
-| `STRIPE_WEBHOOK_SECRET` | For billing | Stripe webhook signature                        |
-| `STRIPE_PRICE_ID`       | For billing | PRO tier price ID                               |
-| `REDIS_URL`             | ✅          | Redis for Celery + caching                      |
-| `ALLOWED_ORIGINS`       | ✅          | CORS origins (default: `http://localhost:3000`) |
+- `backend/.env.example` (local development baseline)
+- `backend/.env.sandbox.example` (AWS sandbox/staging)
+- `backend/.env.production.example` (AWS production)
+- `frontend/.env.example` (local development baseline)
+- `frontend/.env.sandbox.example` (AWS sandbox/staging)
+- `frontend/.env.production.example` (AWS production)
 
-See [.env.example](.env.example) for the complete list with defaults.
+### Backend (`backend/.env`)
+
+| Variable                | Mode     | Description                                     |
+| ----------------------- | -------- | ----------------------------------------------- |
+| `APP_MODE`              | All      | `mock`, `sandbox`, or `production`              |
+| `DATABASE_URL`          | sandbox+ | PostgreSQL connection string                    |
+| `REDIS_URL`             | sandbox+ | Redis for Celery + rate limiting                |
+| `NEXTAUTH_SECRET`       | sandbox+ | Must match frontend `AUTH_SECRET`               |
+| `STRIPE_SECRET_KEY`     | sandbox+ | Stripe API key (test or live)                   |
+| `STRIPE_WEBHOOK_SECRET` | sandbox+ | Stripe webhook signature                        |
+| `AWS_REGION`            | sandbox+ | AWS region for Bedrock (default: `us-east-1`)   |
+| `ALLOWED_ORIGINS`       | All      | CORS origins (comma-separated)                   |
+| `APP_BASE_URL`          | All      | Canonical frontend URL for Stripe/invite links   |
+| `TRUSTED_PROXY_HOPS`    | All      | Trusted proxy depth for `X-Forwarded-For`        |
+
+### Frontend (`frontend/.env`)
+
+| Variable          | Required | Description                          |
+| ----------------- | -------- | ------------------------------------ |
+| `AUTH_SECRET`     | ✅       | JWT signing key (must match backend) |
+| `AUTH_TRUST_HOST` | Dev only | Set to `true` for localhost          |
+| `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
+| `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
 
 ## API Documentation
 
@@ -125,7 +174,7 @@ The API has 43 endpoints across 12 route modules. See [spec.md](spec.md) for the
 ## Testing
 
 ```bash
-# Backend (31 tests)
+# Backend (73 tests)
 make test
 
 # Linting
@@ -149,7 +198,7 @@ make lint
 │   │   │   └── database.py   # Async engine + session factory
 │   │   └── core/             # Ingestion, retrieval, judge engine
 │   ├── alembic/              # DB migrations
-│   └── tests/                # pytest suite (31 tests)
+│   └── tests/                # pytest suite (73 tests)
 ├── frontend/
 │   └── src/
 │       ├── app/              # Next.js App Router (14 routes)

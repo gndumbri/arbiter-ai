@@ -46,7 +46,7 @@ export default function NewAgentPage() {
       setAgentId(session.id);
       setStep(2);
       toast({ title: "Success", description: "Agent created! Now add knowledge." });
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Failed to create agent", variant: "destructive" });
     } finally {
       setIsLoading(false);
@@ -66,7 +66,7 @@ export default function NewAgentPage() {
       await api.uploadRuleset(agentId, data);
       toast({ title: "Success", description: "Ruleset uploaded and processing started." });
       setStep(3);
-    } catch (error) {
+    } catch {
       toast({ title: "Error", description: "Upload failed", variant: "destructive" });
     } finally {
       setIsUploading(false);

@@ -1,7 +1,7 @@
 """judge.py — Adjudication query and feedback endpoints (The Judge).
 
 The core adjudication route: accepts a rules question, resolves the
-appropriate Pinecone namespaces from the session's rulesets, enforces
+appropriate vector namespaces from the session's rulesets, enforces
 billing limits, runs the RAG pipeline, and returns a structured verdict.
 
 Endpoints:
@@ -15,12 +15,9 @@ Depends on: deps.py (CurrentUser, DbSession, GetSettings),
             tables.py (QueryAuditLog, Session, RulesetMetadata, Subscription, SubscriptionTier)
 
 Architecture note for AI agents:
-    Namespace resolution is CRITICAL. Each uploaded ruleset gets its own
-    Pinecone namespace (set during ingestion as `pinecone_namespace` on
-    the RulesetMetadata row). The judge must resolve these namespaces
-    from the session's rulesets to search the correct vector store data.
-    If no rulesets are found, adjudication falls back to the session-level
-    namespace for backward compatibility.
+    Namespace resolution is CRITICAL. Each uploaded ruleset uses its
+    UUID as the vector namespace in pgvector. The judge resolves these
+    namespaces from session rulesets and queries only indexed ones.
 
     Session expiry is enforced here — expired sessions return 410 Gone.
 """
@@ -65,7 +62,7 @@ async def submit_query(
 
     Flow:
         1. Validate session exists and is not expired
-        2. Resolve Pinecone namespaces from session's rulesets
+        2. Resolve vector namespaces from session's rulesets
         3. Check daily query limit based on subscription tier
         4. Run RAG adjudication pipeline
         5. Persist query + verdict to audit log
@@ -102,10 +99,8 @@ async def submit_query(
                 detail="Session has expired. Create a new session to continue.",
             )
 
-    # ── 2. Resolve Pinecone namespaces from session's rulesets ────────────
-    # WHY: Each uploaded ruleset gets stored in a Pinecone namespace named
-    # after its UUID (convention: `ruleset_{id}`). We query indexed rulesets
-    # for this session and construct namespace strings from their IDs.
+    # ── 2. Resolve vector namespaces from session's rulesets ───────────────
+    # WHY: In pgvector, namespace is the ruleset UUID string.
     namespaces: list[str] = []
 
     if body.session_id:
@@ -123,13 +118,16 @@ async def submit_query(
             ns_stmt = ns_stmt.where(RulesetMetadata.id.in_(body.ruleset_ids))
 
         ns_result = await db.execute(ns_stmt)
-        namespaces = [f"ruleset_{row[0]}" for row in ns_result.all()]
+        namespaces = [str(row[0]) for row in ns_result.all()]
 
-    # Fallback: if no rulesets found, use session-level namespace
-    # WHY: Backward compatibility — older sessions may have data under
-    # this namespace pattern from before proper namespace resolution.
     if not namespaces:
-        namespaces = [f"session_{body.session_id}"] if body.session_id else ["user_anonymous"]
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No indexed rulesets available for this session. "
+                "Upload and finish indexing a ruleset first."
+            ),
+        )
 
     # ── 3. Resolve tier and check daily query limits ──────────────────────
     stmt = select(Subscription).where(Subscription.user_id == user["id"])
@@ -185,7 +183,7 @@ async def submit_query(
         logger.exception("adjudication_failed", query=body.query[:100])
         raise HTTPException(
             status_code=500,
-            detail=f"Adjudication failed: {exc}",
+            detail="An error occurred during adjudication. Please try again.",
         ) from exc
 
     # ── 5. Persist to audit log ───────────────────────────────────────────
@@ -241,11 +239,12 @@ async def submit_query(
 async def submit_feedback(
     query_id: uuid.UUID,
     body: FeedbackRequest,
+    user: CurrentUser,
     db: DbSession,
 ) -> None:
     """Submit feedback (thumbs up/down) for a verdict.
 
-    Auth: None (feedback is anonymous for simplicity).
+    Auth: JWT required (users can only rate their own queries).
     Rate limit: None.
     Tier: All tiers.
 
@@ -258,7 +257,10 @@ async def submit_feedback(
     """
     result = await db.execute(
         update(QueryAuditLog)
-        .where(QueryAuditLog.id == query_id)
+        .where(
+            QueryAuditLog.id == query_id,
+            QueryAuditLog.user_id == user["id"],
+        )
         .values(feedback=body.feedback)
     )
 

@@ -142,6 +142,9 @@ class Session(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     game_name: Mapped[str] = mapped_column(String, nullable=False)
+    # Agent/persona support (used by /agents and session create payload)
+    persona: Mapped[str | None] = mapped_column(String, nullable=True)
+    system_prompt_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     active_ruleset_ids: Mapped[list[str] | None] = mapped_column(
         ARRAY(UUID(as_uuid=True)), nullable=True
     )

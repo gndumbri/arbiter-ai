@@ -42,6 +42,9 @@ class SessionRead(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     game_name: str
+    persona: str | None = None
+    system_prompt_override: str | None = None
+    active_ruleset_ids: list[uuid.UUID] | None = None
     created_at: datetime
     expires_at: datetime
 

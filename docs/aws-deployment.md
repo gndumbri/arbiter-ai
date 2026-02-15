@@ -13,8 +13,7 @@ graph TD
         ECS_BE --> RDS[(RDS PostgreSQL 16)]
         ECS_BE --> EC[(ElastiCache Redis)]
         ECS_BE --> SM[Secrets Manager]
-        ECS_BE --> PC[Pinecone Cloud]
-        ECS_BE --> OAI[OpenAI API]
+        ECS_BE --> BR[AWS Bedrock]
         ECS_BE --> STR[Stripe API]
         R53[Route 53] --> CF
     end
@@ -27,10 +26,94 @@ graph TD
 - Docker installed locally
 - A registered domain (e.g., `arbiter-ai.com`)
 - Stripe account with API keys
-- OpenAI API key
-- Pinecone account and index
+- AWS account with Bedrock model access (Claude + Titan embed)
 
 ---
+
+## App Modes & Environment Configuration
+
+Arbiter AI uses two env vars to control runtime behavior:
+
+| Env Var    | Values                                 | Controls                                                  |
+| ---------- | -------------------------------------- | --------------------------------------------------------- |
+| `APP_MODE` | `mock`, `sandbox`, `production`        | **What features run** — providers, billing, auth bypass   |
+| `APP_ENV`  | `development`, `staging`, `production` | **How strict the app is** — error detail, security guards |
+
+### Mode Comparison
+
+| Capability       | `mock`      | `sandbox`        | `production`         |
+| ---------------- | ----------- | ---------------- | -------------------- |
+| Database         | ❌ Bypassed | ✅ Real Postgres | ✅ Real Postgres     |
+| Auth (JWT)       | ❌ Bypassed | ✅ Full auth     | ✅ Full auth         |
+| LLM / Embeddings | ❌ Faked    | ✅ AWS Bedrock   | ✅ AWS Bedrock       |
+| Stripe Billing   | ❌ Faked    | ✅ Test keys     | ✅ Live keys         |
+| Rate Limiting    | ❌ Off      | ✅ Redis-backed  | ✅ Redis-backed      |
+| Security Guards  | Relaxed     | Warn on missing  | **Crash on missing** |
+| Error Messages   | Detailed    | Detailed         | Sanitized            |
+
+### Switching Modes
+
+**Local development** (default):
+
+```bash
+APP_MODE=sandbox
+APP_ENV=development
+```
+
+**Frontend-only dev** (no backend deps):
+
+```bash
+APP_MODE=mock
+APP_ENV=development
+```
+
+**Staging / QA**:
+
+```bash
+APP_MODE=sandbox
+APP_ENV=staging
+```
+
+**Production deployment**:
+
+```bash
+APP_MODE=production
+APP_ENV=production
+```
+
+> [!CAUTION]
+> In `production` mode, the app **will not start** if `NEXTAUTH_SECRET`, `STRIPE_SECRET_KEY`, or AWS credentials are missing. This is intentional — it prevents silently running without auth or billing.
+
+### Environment Templates
+
+Use environment-specific templates as your starting point:
+
+```bash
+# Backend
+cp backend/.env.sandbox.example backend/.env      # sandbox/staging
+cp backend/.env.production.example backend/.env   # production
+
+# Frontend
+cp frontend/.env.sandbox.example frontend/.env      # sandbox/staging
+cp frontend/.env.production.example frontend/.env   # production
+```
+
+Then replace placeholder values and store them in AWS Secrets Manager/SSM.
+
+### Frontend Environment
+
+The frontend needs these env vars in all modes:
+
+```bash
+# frontend/.env
+AUTH_SECRET=<must-match-backend-NEXTAUTH_SECRET>
+AUTH_TRUST_HOST=true          # Required for non-production hosts
+NEXTAUTH_URL=http://localhost:3000   # Or your production URL
+DATABASE_URL=postgresql://arbiter:arbiter_dev@localhost:5432/arbiter
+```
+
+> [!IMPORTANT]
+> `AUTH_SECRET` (frontend) and `NEXTAUTH_SECRET` (backend) **must be the same value**. They are the JWT signing key shared between NextAuth and the FastAPI JWT validator.
 
 ## Step 1: Create Infrastructure
 
@@ -60,6 +143,9 @@ aws rds create-db-instance \
   --storage-encrypted
 ```
 
+> [!IMPORTANT]
+> Ensure your Postgres target supports the `vector` extension (`CREATE EXTENSION vector;`) before running Alembic migrations.
+
 ### 1c. ElastiCache Redis
 
 ```bash
@@ -81,13 +167,18 @@ aws secretsmanager create-secret \
   --secret-string '{
     "DATABASE_URL": "postgresql+asyncpg://arbiter:<PW>@<RDS_ENDPOINT>:5432/arbiter",
     "REDIS_URL": "redis://<ELASTICACHE_ENDPOINT>:6379/0",
-    "OPENAI_API_KEY": "sk-...",
-    "PINECONE_API_KEY": "...",
+    "APP_MODE": "production",
+    "LLM_PROVIDER": "bedrock",
+    "EMBEDDING_PROVIDER": "bedrock",
+    "VECTOR_STORE_PROVIDER": "pgvector",
+    "AWS_REGION": "us-east-1",
     "NEXTAUTH_SECRET": "<RANDOM_32_CHARS>",
     "STRIPE_SECRET_KEY": "sk_live_...",
     "STRIPE_WEBHOOK_SECRET": "whsec_...",
     "STRIPE_PRICE_ID": "price_...",
     "ALLOWED_ORIGINS": "https://arbiter-ai.com",
+    "APP_BASE_URL": "https://arbiter-ai.com",
+    "TRUSTED_PROXY_HOPS": "1",
     "APP_ENV": "production",
     "LOG_LEVEL": "INFO"
   }'
@@ -133,7 +224,7 @@ Create task definitions for both services. Key configuration:
 | Frontend | 256 | 512 MB  | 3000 | `GET /`       |
 
 > [!IMPORTANT]
-> The task execution role must have permissions to pull from ECR and read from Secrets Manager.
+> The task execution role must have permissions to pull from ECR and read from Secrets Manager. The task role must also have Bedrock invoke permissions.
 
 ### 3c. Environment Variables
 

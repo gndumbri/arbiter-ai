@@ -2,10 +2,40 @@ import NextAuth from "next-auth";
 // import { DrizzleAdapter } from "@auth/drizzle-adapter";
 // import { db } from "@/db";
 // import { accounts, users, verificationTokens } from "@/db/auth-schema";
+import { createHmac } from "crypto";
 import Email from "next-auth/providers/email";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
 import { communication } from "@/lib/communication/service";
+
+function base64UrlEncode(value: string): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+function createBackendAccessToken(payload: {
+  sub: string;
+  email?: string | null;
+  name?: string | null;
+}): string | null {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret || !payload.sub) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const claims = {
+    sub: payload.sub,
+    email: payload.email ?? undefined,
+    name: payload.name ?? undefined,
+    iat: now,
+    exp: now + 60 * 60, // 1 hour
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedClaims = base64UrlEncode(JSON.stringify(claims));
+  const signingInput = `${encodedHeader}.${encodedClaims}`;
+  const signature = createHmac("sha256", secret).update(signingInput).digest("base64url");
+  return `${signingInput}.${signature}`;
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -16,23 +46,48 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   //   verificationTokensTable: verificationTokens,
   // }),
   session: { strategy: "jwt" },
+  callbacks: {
+    ...authConfig.callbacks,
+    jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+        token.email = user.email;
+        token.name = user.name;
+      }
+      return token;
+    },
+    session({ session, token }) {
+      if (session.user && token.sub) {
+        session.user.id = token.sub;
+        const accessToken = createBackendAccessToken({
+          sub: token.sub,
+          email: token.email,
+          name: token.name,
+        });
+        if (accessToken) {
+          (session as { accessToken?: string }).accessToken = accessToken;
+        }
+      }
+      return session;
+    },
+  },
   providers: [
-    // Email({
-    //   server: process.env.EMAIL_SERVER, // Optional if using custom sendVerificationRequest
-    //   from: process.env.EMAIL_FROM,
-    //   sendVerificationRequest: async (params) => {
-    //     const { identifier: to, url, provider, theme } = params;
-    //     const { host } = new URL(url);
-        
-    //     // Use our new Communication Service (Brevo)
-    //     await communication.sendTransactionalEmail({
-    //         to: [{ email: to }],
-    //         subject: `Sign in to ${host}`,
-    //         text: text({ url, host }),
-    //         html: html({ url, host, theme }),
-    //     });
-    //   },
-    // }),
+    Email({
+      // Placeholder is required by provider validation when we use a custom sender.
+      server: process.env.EMAIL_SERVER || "smtp://localhost:25",
+      from: process.env.EMAIL_FROM || "noreply@arbiter-ai.com",
+      sendVerificationRequest: async (params) => {
+        const { identifier: to, url, theme } = params;
+        const signInHost = new URL(url).host;
+
+        await communication.sendTransactionalEmail({
+          to: [{ email: to }],
+          subject: `Sign in to ${signInHost}`,
+          text: text({ url, host: signInHost }),
+          html: html({ url, host: signInHost, theme }),
+        });
+      },
+    }),
     Credentials({
       id: "credentials",
       name: "Dev Login",
@@ -41,15 +96,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       authorize: async (credentials) => {
         if (process.env.NODE_ENV !== "development") return null;
-        
+
         const email = credentials.email as string;
         // Allow specific dev emails or just checking format
         if (email === "kasey.kaplan@gmail.com") {
-             return { id: "dev-user-id", email: email, name: "Kasey Kaplan (Dev)" };
+          return {
+            id: "f6f4aede-0673-49ab-8c63-cf569273c267",
+            email,
+            name: "Kasey Kaplan (Dev)",
+          };
         }
         return null;
-      }
-    })
+      },
+    }),
   ],
 });
 

@@ -2,13 +2,10 @@
 import {
   pgTable,
   text,
-  varchar,
   timestamp,
-  boolean,
   uuid,
   integer,
   primaryKey,
-  foreignKey,
 } from "drizzle-orm/pg-core";
 import { type AdapterAccount } from "next-auth/adapters";
 

@@ -39,14 +39,12 @@ function isValidUUID(id: string): boolean {
 export default function WidgetPage() {
   const params = useParams();
   const id = params.id as string;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  const validationError =
+    !id || !isValidUUID(id) ? "Invalid session ID. Please check the widget URL." : null;
 
   useEffect(() => {
-    // Validate the session ID format
-    if (!id || !isValidUUID(id)) {
-      setError("Invalid session ID. Please check the widget URL.");
-      setLoading(false);
+    if (validationError) {
       return;
     }
 
@@ -54,11 +52,13 @@ export default function WidgetPage() {
     // content. In production, replace with actual session validation
     // via an API call to check if the session exists and isn't expired.
     const timer = setTimeout(() => {
-      setLoading(false);
+      setIsReady(true);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [id]);
+  }, [validationError]);
+
+  const loading = !validationError && !isReady;
 
   if (loading) {
     return (
@@ -68,13 +68,13 @@ export default function WidgetPage() {
     );
   }
 
-  if (error) {
+  if (validationError) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3 text-center p-4">
           <AlertCircle className="h-10 w-10 text-destructive" />
           <h2 className="text-lg font-semibold">Widget Error</h2>
-          <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
+          <p className="text-sm text-muted-foreground max-w-sm">{validationError}</p>
         </div>
       </div>
     );

@@ -30,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { api, SavedRulingResponse, GameRulingCount } from "@/lib/api";
+import { api, SavedRulingResponse } from "@/lib/api";
 
 // ─── Privacy Icon ──────────────────────────────────────────────────────────
 
@@ -194,7 +194,7 @@ function RulingCard({
                             {c.section ? ` §${c.section}` : ""}
                           </span>
                           {c.snippet && (
-                            <span className="ml-1 italic">— "{c.snippet}"</span>
+                            <span className="ml-1 italic">- &ldquo;{c.snippet}&rdquo;</span>
                           )}
                         </div>
                       ))}
