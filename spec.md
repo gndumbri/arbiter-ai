@@ -68,6 +68,7 @@ CREATE TABLE users (
     email_verified TIMESTAMPTZ,                  -- NextAuth email verification
     image TEXT,                                  -- Avatar URL (NextAuth)
     role TEXT NOT NULL DEFAULT 'USER',            -- USER | ADMIN (RBAC)
+    default_ruling_privacy TEXT NOT NULL DEFAULT 'PRIVATE',  -- PRIVATE | PARTY | PUBLIC
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -318,62 +319,63 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 
 ### 3.2 Endpoint Summary
 
-| Method | Path                                 | Auth      | Description                       |
-| ------ | ------------------------------------ | --------- | --------------------------------- |
-| GET    | `/health`                            | None      | Service health + DB connectivity  |
-| POST   | `/api/v1/sessions`                   | JWT       | Create game session               |
-| GET    | `/api/v1/sessions`                   | JWT       | List user sessions                |
-| POST   | `/api/v1/rules/upload`               | JWT       | Upload rulebook PDF               |
-| GET    | `/api/v1/rulesets/{id}/status`       | JWT       | Poll ingestion status             |
-| GET    | `/api/v1/rulesets`                   | JWT       | List user's rulesets              |
-| POST   | `/api/v1/judge`                      | JWT       | Submit rules question             |
-| POST   | `/api/v1/judge/{id}/feedback`        | JWT       | Submit verdict feedback           |
-| GET    | `/api/v1/library`                    | JWT       | Get user's game library           |
-| POST   | `/api/v1/library`                    | JWT       | Add game to library               |
-| PATCH  | `/api/v1/library/{id}`               | JWT       | Update library entry              |
-| DELETE | `/api/v1/library/{id}`               | JWT       | Remove game from library          |
-| PATCH  | `/api/v1/library/{id}/favorite`      | JWT       | Toggle favorite                   |
-| GET    | `/api/v1/users/me`                   | JWT       | Get current user profile          |
-| PATCH  | `/api/v1/users/me`                   | JWT       | Update user profile               |
-| DELETE | `/api/v1/users/me`                   | JWT       | Delete user account               |
-| GET    | `/api/v1/catalog`                    | None      | Browse official rulesets (search) |
-| GET    | `/api/v1/catalog/{slug}`             | None      | Get official game details         |
-| POST   | `/api/v1/publishers`                 | None      | Register publisher (returns key)  |
-| GET    | `/api/v1/publishers/{id}`            | None      | Get publisher details             |
-| POST   | `/api/v1/publishers/{id}/games`      | API Key   | Add official ruleset              |
-| POST   | `/api/v1/publishers/{id}/rotate-key` | API Key   | Rotate publisher API key          |
-| POST   | `/api/v1/billing/checkout`           | JWT       | Create Stripe checkout            |
-| POST   | `/api/v1/billing/portal`             | JWT       | Create Stripe customer portal     |
-| GET    | `/api/v1/billing/tiers`              | None      | List subscription tiers           |
-| GET    | `/api/v1/billing/subscription`       | JWT       | Get user's subscription           |
-| POST   | `/api/v1/billing/webhooks/stripe`    | Signature | Stripe webhook receiver           |
-| GET    | `/api/v1/admin/stats`                | JWT+Admin | System-wide statistics            |
-| GET    | `/api/v1/admin/users`                | JWT+Admin | List all users                    |
-| PATCH  | `/api/v1/admin/users/{id}/role`      | JWT+Admin | Update user role (USER/ADMIN)     |
-| GET    | `/api/v1/admin/publishers`           | JWT+Admin | List publishers                   |
-| PATCH  | `/api/v1/admin/publishers/{id}`      | JWT+Admin | Update publisher details          |
-| GET    | `/api/v1/admin/tiers`                | JWT+Admin | List subscription tiers           |
-| PATCH  | `/api/v1/admin/tiers/{id}`           | JWT+Admin | Update tier limits                |
-| GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings         |
-| GET    | `/api/v1/rulings?game_name=X`        | JWT       | Filter rulings by game            |
-| GET    | `/api/v1/rulings/games`              | JWT       | Distinct game names + counts      |
-| GET    | `/api/v1/rulings/public`             | None      | List public community rulings     |
-| POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                     |
-| PATCH  | `/api/v1/rulings/{id}`               | JWT       | Update ruling metadata            |
-| DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling             |
-| GET    | `/api/v1/agents`                     | JWT       | List user's agents (sessions)     |
-| POST   | `/api/v1/parties`                    | JWT       | Create a party                    |
-| GET    | `/api/v1/parties`                    | JWT       | List user's parties               |
-| POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                      |
-| POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                     |
-| DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)       |
-| GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members                |
-| DELETE | `/api/v1/parties/{id}/members/{uid}` | JWT       | Remove member (owner only)        |
-| PATCH  | `/api/v1/parties/{id}/owner`         | JWT       | Transfer ownership                |
-| GET    | `/api/v1/parties/{id}/invite`        | JWT       | Generate JWT invite link (48h)    |
-| POST   | `/api/v1/parties/join-via-link`      | JWT       | Join via signed invite token      |
-| GET    | `/api/v1/parties/{id}/game-shares`   | JWT       | List party game shares            |
-| PUT    | `/api/v1/parties/{id}/game-shares`   | JWT       | Update party game shares          |
+| Method | Path                                 | Auth      | Description                          |
+| ------ | ------------------------------------ | --------- | ------------------------------------ |
+| GET    | `/health`                            | None      | Service health + DB connectivity     |
+| POST   | `/api/v1/sessions`                   | JWT       | Create game session                  |
+| GET    | `/api/v1/sessions`                   | JWT       | List user sessions                   |
+| POST   | `/api/v1/rules/upload`               | JWT       | Upload rulebook PDF                  |
+| GET    | `/api/v1/rulesets/{id}/status`       | JWT       | Poll ingestion status                |
+| GET    | `/api/v1/rulesets`                   | JWT       | List user's rulesets                 |
+| POST   | `/api/v1/judge`                      | JWT       | Submit rules question                |
+| POST   | `/api/v1/judge/{id}/feedback`        | JWT       | Submit verdict feedback              |
+| GET    | `/api/v1/library`                    | JWT       | Get user's game library              |
+| POST   | `/api/v1/library`                    | JWT       | Add game to library                  |
+| PATCH  | `/api/v1/library/{id}`               | JWT       | Update library entry                 |
+| DELETE | `/api/v1/library/{id}`               | JWT       | Remove game from library             |
+| PATCH  | `/api/v1/library/{id}/favorite`      | JWT       | Toggle favorite                      |
+| GET    | `/api/v1/users/me`                   | JWT       | Get current user profile             |
+| PATCH  | `/api/v1/users/me`                   | JWT       | Update user profile                  |
+| DELETE | `/api/v1/users/me`                   | JWT       | Delete user account                  |
+| GET    | `/api/v1/catalog`                    | None      | Browse official rulesets (search)    |
+| GET    | `/api/v1/catalog/{slug}`             | None      | Get official game details            |
+| POST   | `/api/v1/publishers`                 | None      | Register publisher (returns key)     |
+| GET    | `/api/v1/publishers/{id}`            | None      | Get publisher details                |
+| POST   | `/api/v1/publishers/{id}/games`      | API Key   | Add official ruleset                 |
+| POST   | `/api/v1/publishers/{id}/rotate-key` | API Key   | Rotate publisher API key             |
+| POST   | `/api/v1/billing/checkout`           | JWT       | Create Stripe checkout               |
+| POST   | `/api/v1/billing/portal`             | JWT       | Create Stripe customer portal        |
+| GET    | `/api/v1/billing/tiers`              | None      | List subscription tiers              |
+| GET    | `/api/v1/billing/subscription`       | JWT       | Get user's subscription              |
+| POST   | `/api/v1/billing/webhooks/stripe`    | Signature | Stripe webhook receiver              |
+| GET    | `/api/v1/admin/stats`                | JWT+Admin | System-wide statistics               |
+| GET    | `/api/v1/admin/users`                | JWT+Admin | List all users                       |
+| PATCH  | `/api/v1/admin/users/{id}/role`      | JWT+Admin | Update user role (USER/ADMIN)        |
+| GET    | `/api/v1/admin/publishers`           | JWT+Admin | List publishers                      |
+| PATCH  | `/api/v1/admin/publishers/{id}`      | JWT+Admin | Update publisher details             |
+| GET    | `/api/v1/admin/tiers`                | JWT+Admin | List subscription tiers              |
+| PATCH  | `/api/v1/admin/tiers/{id}`           | JWT+Admin | Update tier limits                   |
+| GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings            |
+| GET    | `/api/v1/rulings?game_name=X`        | JWT       | Filter rulings by game               |
+| GET    | `/api/v1/rulings/games`              | JWT       | Distinct game names + counts         |
+| GET    | `/api/v1/rulings/public`             | None      | List public community rulings        |
+| POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                        |
+| PATCH  | `/api/v1/rulings/{id}`               | JWT       | Update ruling metadata               |
+| DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling                |
+| GET    | `/api/v1/agents`                     | JWT       | List user's agents (sessions)        |
+| POST   | `/api/v1/parties`                    | JWT       | Create a party                       |
+| GET    | `/api/v1/parties`                    | JWT       | List user's parties                  |
+| POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                         |
+| POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                        |
+| DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)          |
+| GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members                   |
+| DELETE | `/api/v1/parties/{id}/members/{uid}` | JWT       | Remove member (owner only)           |
+| PATCH  | `/api/v1/parties/{id}/owner`         | JWT       | Transfer ownership                   |
+| GET    | `/api/v1/parties/{id}/invite`        | JWT       | Generate JWT invite link (48h)       |
+| POST   | `/api/v1/parties/join-via-link`      | JWT       | Join via signed invite token         |
+| GET    | `/api/v1/parties/{id}/game-shares`   | JWT       | List party game shares               |
+| PUT    | `/api/v1/parties/{id}/game-shares`   | JWT       | Update party game shares             |
+| GET    | `/api/v1/rulings/party`              | JWT       | List rulings shared by party members |
 
 ### 3.3 Error Codes
 
@@ -387,6 +389,20 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 | `NOT_A_RULEBOOK`    | 422  | Layer 2 relevance filter rejection |
 | `BLOCKED_FILE`      | 403  | File hash in blocklist             |
 | `INTERNAL_ERROR`    | 500  | Unhandled server error             |
+
+### 3.4 Frontend Pages (Next.js App Router)
+
+| Route                   | Nav Label | Description                                                                          |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------ |
+| `/dashboard`            | Shelf     | Uploaded rulesets + "Continue Asking" recent game sessions                           |
+| `/dashboard/catalog`    | Armory    | Browse official catalog, add games to library                                        |
+| `/dashboard/rulings`    | Scrolls   | Saved rulings — My Scrolls, Party Scrolls, Tavern Board tabs; group-by-game Q&A view |
+| `/dashboard/parties`    | Guild     | Create/manage parties, JWT invite links, member controls                             |
+| `/dashboard/agents`     | Ask       | "Ask the Arbiter" — start a game session to ask rules questions                      |
+| `/dashboard/agents/new` | —         | New session creation wizard (pick game + rulesets)                                   |
+| `/dashboard/settings`   | Settings  | Profile, scroll privacy preference, subscription, account                            |
+| `/session/[id]`         | —         | Live chat session with the Arbiter (rules Q&A)                                       |
+| `/invite/[token]`       | —         | JWT invite acceptance page for party invites                                         |
 
 ---
 

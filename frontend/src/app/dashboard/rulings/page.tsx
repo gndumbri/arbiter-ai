@@ -23,6 +23,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  LayoutList,
+  FolderOpen,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -232,12 +234,101 @@ function RulingCard({
   );
 }
 
+// ─── Game Group Component ───────────────────────────────────────────────────
+
+function GameGroup({
+  gameName,
+  rulings,
+  onDelete,
+  onPrivacyCycle,
+  showPrivacyToggle,
+}: {
+  gameName: string;
+  rulings: SavedRulingResponse[];
+  onDelete: (id: string) => void;
+  onPrivacyCycle: (id: string, level: string) => void;
+  showPrivacyToggle: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+
+  return (
+    <div className="rounded-lg border border-border/50 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Gamepad2 className="h-4 w-4 text-primary" />
+          <span className="font-semibold text-sm">{gameName}</span>
+          <Badge variant="secondary" className="text-xs">
+            {rulings.length} {rulings.length === 1 ? "ruling" : "rulings"}
+          </Badge>
+        </div>
+        {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {expanded && (
+        <div className="divide-y divide-border/30">
+          {rulings.map((ruling) => (
+            <div key={ruling.id} className="px-4 py-3 space-y-2 hover:bg-muted/10 transition-colors">
+              {/* Q&A format */}
+              <div className="flex items-start gap-2">
+                <span className="text-xs font-bold text-primary mt-0.5 shrink-0">Q:</span>
+                <p className="text-sm font-medium">{ruling.query}</p>
+              </div>
+              {ruling.verdict_json?.verdict && (
+                <div className="flex items-start gap-2">
+                  <span className="text-xs font-bold text-green-500 mt-0.5 shrink-0">A:</span>
+                  <p className="text-sm text-muted-foreground line-clamp-3">
+                    {ruling.verdict_json.verdict}
+                  </p>
+                </div>
+              )}
+              {/* Actions row */}
+              <div className="flex items-center gap-2 ml-5">
+                {ruling.tags?.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs py-0">
+                    {tag}
+                  </Badge>
+                ))}
+                {showPrivacyToggle && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs gap-1 ml-auto"
+                    onClick={() => {
+                      const cycle = { PRIVATE: "PARTY", PARTY: "PUBLIC", PUBLIC: "PRIVATE" };
+                      onPrivacyCycle(ruling.id, cycle[ruling.privacy_level as keyof typeof cycle] || "PRIVATE");
+                    }}
+                  >
+                    {ruling.privacy_level === "PRIVATE" ? <Lock className="h-3 w-3" /> : ruling.privacy_level === "PARTY" ? <Users className="h-3 w-3" /> : <Globe className="h-3 w-3" />}
+                    {ruling.privacy_level}
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs text-destructive hover:text-destructive"
+                  onClick={() => onDelete(ruling.id)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function RulingsPage() {
   const [activeTab, setActiveTab] = useState<"mine" | "party" | "community">("mine");
   const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [groupByGame, setGroupByGame] = useState(true);
 
   const { data: myRulings, isLoading: loadingMine } = useSWR(
     activeTab === "mine" ? ["rulings", selectedGame] : null,
@@ -367,14 +458,26 @@ export default function RulingsPage() {
           </div>
         )}
 
-        <div className="relative sm:ml-auto sm:w-64">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search rulings..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8"
-          />
+        {/* Group toggle + Search */}
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <Button
+            variant={groupByGame ? "default" : "outline"}
+            size="sm"
+            className="h-9 gap-1 text-xs"
+            onClick={() => setGroupByGame(!groupByGame)}
+          >
+            {groupByGame ? <FolderOpen className="h-3.5 w-3.5" /> : <LayoutList className="h-3.5 w-3.5" />}
+            {groupByGame ? "Grouped" : "List"}
+          </Button>
+          <div className="relative sm:w-64">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search rulings..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8"
+            />
+          </div>
         </div>
       </div>
 
@@ -399,7 +502,29 @@ export default function RulingsPage() {
               : "Save a verdict from the chat to start your archive."}
           </p>
         </div>
+      ) : groupByGame ? (
+        /* ─── Grouped by Game View ──────────────────────────────────── */
+        <div className="space-y-6">
+          {Object.entries(
+            filtered.reduce<Record<string, SavedRulingResponse[]>>((acc, r) => {
+              const key = r.game_name || "Uncategorized";
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(r);
+              return acc;
+            }, {})
+          ).map(([gameName, gameRulings]) => (
+            <GameGroup
+              key={gameName}
+              gameName={gameName}
+              rulings={gameRulings}
+              onDelete={handleDelete}
+              onPrivacyCycle={handlePrivacyCycle}
+              showPrivacyToggle={activeTab === "mine"}
+            />
+          ))}
+        </div>
       ) : (
+        /* ─── Flat List View ──────────────────────────────────────── */
         <div className="space-y-3">
           <AnimatePresence>
             {filtered.map((ruling) => (

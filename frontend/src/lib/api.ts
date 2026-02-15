@@ -100,13 +100,13 @@ export interface Agent {
 
 export interface LibraryEntry {
   id: string;
-  game_slug: string;
   game_name: string;
+  game_slug: string;
   added_from_catalog: boolean;
   official_ruleset_id: string | null;
-  notes: string | null;
+  is_favorite: boolean;
   favorite: boolean;
-  last_played_at: string | null;
+  last_queried: string | null;
   created_at: string;
 }
 
