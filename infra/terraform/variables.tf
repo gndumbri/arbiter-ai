@@ -105,6 +105,30 @@ variable "vpc_cidr" {
   default     = "10.0.0.0/16"
 }
 
+variable "create_networking" {
+  description = "When true, Terraform creates VPC/subnets/NAT. When false, deploy into existing network."
+  type        = bool
+  default     = false
+}
+
+variable "existing_vpc_id" {
+  description = "Existing VPC ID to use when create_networking=false (auto-discovered by Name tag when empty)."
+  type        = string
+  default     = ""
+}
+
+variable "existing_public_subnet_ids" {
+  description = "Existing public subnet IDs for ALB/NAT when create_networking=false (auto-discovered by Name tag when empty)."
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_private_subnet_ids" {
+  description = "Existing private subnet IDs for ECS tasks when create_networking=false (auto-discovered by Name tag when empty)."
+  type        = list(string)
+  default     = []
+}
+
 variable "alb_certificate_arn" {
   description = "ACM certificate ARN for ALB HTTPS listener (leave empty to run HTTP-only)"
   type        = string
@@ -151,6 +175,18 @@ variable "frontend_node_options" {
   description = "NODE_OPTIONS for frontend runtime (heap cap to reduce OOM risk on small tasks)"
   type        = string
   default     = "--max-old-space-size=384"
+}
+
+variable "create_cloudwatch_log_groups" {
+  description = "When true, create CloudWatch log groups. Set false when groups are pre-provisioned."
+  type        = bool
+  default     = false
+}
+
+variable "cloudwatch_log_retention_days" {
+  description = "CloudWatch log retention days when create_cloudwatch_log_groups=true."
+  type        = number
+  default     = 30
 }
 
 variable "worker_cpu" {
@@ -207,6 +243,30 @@ variable "uploads_dir" {
   default     = "/tmp/arbiter_uploads"
 }
 
+variable "enable_shared_uploads" {
+  description = "Enable shared uploads volume in ECS task definitions."
+  type        = bool
+  default     = false
+}
+
+variable "create_efs_resources" {
+  description = "When true, create EFS resources for shared uploads; otherwise use existing_efs_file_system_id."
+  type        = bool
+  default     = false
+}
+
+variable "existing_efs_file_system_id" {
+  description = "Existing EFS filesystem ID to mount when create_efs_resources=false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_efs_access_point_id" {
+  description = "Optional existing EFS access point ID used when create_efs_resources=false."
+  type        = string
+  default     = ""
+}
+
 variable "secrets_manager_arn" {
   description = "ARN of the Secrets Manager secret containing app env vars"
   type        = string
@@ -216,6 +276,54 @@ variable "github_repo" {
   description = "GitHub repository (owner/name) for OIDC trust policy"
   type        = string
   default     = "gndumbri/arbiter-ai"
+}
+
+variable "create_github_actions_iam" {
+  description = "When true, create GitHub OIDC provider and deploy role. Leave false for least-privilege deploy pipelines."
+  type        = bool
+  default     = false
+}
+
+variable "create_ecs_task_roles" {
+  description = "When true, create ECS task execution/task roles. When false, reuse existing roles."
+  type        = bool
+  default     = false
+}
+
+variable "manage_ecs_task_role_policies" {
+  description = "When true, attach/update inline ECS task role policies even when roles are pre-existing."
+  type        = bool
+  default     = false
+}
+
+variable "existing_ecs_task_execution_role_arn" {
+  description = "Existing ECS task execution role ARN when create_ecs_task_roles=false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_ecs_task_role_arn" {
+  description = "Existing ECS task role ARN when create_ecs_task_roles=false."
+  type        = string
+  default     = ""
+}
+
+variable "existing_ecs_task_execution_role_name" {
+  description = "Existing ECS task execution role name when create_ecs_task_roles=false. Defaults to <project>-ecs-task-execution."
+  type        = string
+  default     = ""
+}
+
+variable "existing_ecs_task_role_name" {
+  description = "Existing ECS task role name when create_ecs_task_roles=false. Defaults to <project>-ecs-task."
+  type        = string
+  default     = ""
+}
+
+variable "create_data_services" {
+  description = "When true, provision RDS + ElastiCache. Keep false when using pre-existing managed data services."
+  type        = bool
+  default     = false
 }
 
 # --- RDS ---
@@ -253,6 +361,7 @@ variable "db_username" {
 variable "db_password" {
   description = "Master password for the RDS instance"
   type        = string
+  default     = ""
   sensitive   = true
 }
 

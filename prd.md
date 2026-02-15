@@ -82,6 +82,8 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Frontend now prevents broken AWS bundles by auto-overriding production `NEXT_PUBLIC_API_URL` values that still point to localhost.
 - Terraform deploy wiring now supports environment-specific URL/CORS/auth vars and optional sandbox secret injection, preventing ECS startup failures when non-production keys (e.g., SES/Brevo/Stripe) are intentionally omitted.
 - Terraform deploy wiring now includes dedicated ECS worker/beat services plus shared EFS upload storage, so async ingestion and scheduled catalog/rules sync run reliably in AWS.
+- Terraform now supports restricted-role app deploys by defaulting foundation resource creation off (`create_*` flags) and reusing pre-existing AWS network/IAM/EFS resources via `existing_*` inputs.
+- CI deploys now auto-load environment tfvars (`infra/terraform/environments/<mode>.tfvars`), and sandbox ships with a full-bootstrap profile so Terraform can stand up the full stack in AWS from code.
 - Frontend environment badge now avoids `localhost` health probes in production builds and follows same-origin fallback behavior.
 - ECS health checks were hardened to avoid `curl` dependencies, and Terraform env naming now consistently uses `production`, preventing snapshot-policy drift and startup surprises.
 - Armory/Add-Game now show explicit offline fallback messaging when backend catalog calls fail, preventing silent partial-list confusion.

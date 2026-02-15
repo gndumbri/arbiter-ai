@@ -142,6 +142,13 @@ next_public_api_url = "/api/v1"
 email_provider = "ses"
 sandbox_email_bypass_enabled = true
 inject_optional_sandbox_secrets = false
+create_networking            = true
+create_github_actions_iam    = false
+create_ecs_task_roles        = true
+create_cloudwatch_log_groups = true
+create_efs_resources         = true
+create_data_services         = true
+enable_shared_uploads        = true
 worker_desired_count = 1
 beat_desired_count   = 1
 uploads_dir          = "/tmp/arbiter_uploads"
@@ -159,11 +166,30 @@ frontend_nextauth_url = "https://arbiter-ai.com"
 next_public_api_url = "/api/v1"
 email_provider = "ses"
 sandbox_email_bypass_enabled = false
+create_networking            = false
+create_github_actions_iam    = false
+create_ecs_task_roles        = false
+create_cloudwatch_log_groups = false
+create_efs_resources         = false
+create_data_services         = false
+enable_shared_uploads        = true
+existing_vpc_id              = "vpc-xxxxxxxx"
+existing_public_subnet_ids   = ["subnet-public-a", "subnet-public-b"]
+existing_private_subnet_ids  = ["subnet-private-a", "subnet-private-b"]
+existing_ecs_task_execution_role_name = "arbiter-ai-ecs-task-execution"
+existing_ecs_task_role_name           = "arbiter-ai-ecs-task"
+existing_efs_file_system_id           = "fs-xxxxxxxx"
+existing_efs_access_point_id          = "fsap-xxxxxxxx"
 worker_desired_count = 1
 beat_desired_count   = 1
 uploads_dir          = "/tmp/arbiter_uploads"
 secrets_manager_arn  = "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:arbiter-ai/production-XXXX"
 ```
+
+> [!TIP]
+> If your CI role cannot create IAM/VPC/EFS resources, keep the `create_*` flags above set to `false` and provide `existing_*` IDs. This avoids `AccessDenied` on `CreateVpc`, `CreateRole`, and `CreateFileSystem`.
+>
+> The deploy workflow auto-loads `infra/terraform/environments/<deploy_mode>.tfvars` when present. The repo includes `infra/terraform/environments/sandbox.tfvars` for full sandbox bootstrap.
 
 ### 4b. ECS task definition in Terraform
 

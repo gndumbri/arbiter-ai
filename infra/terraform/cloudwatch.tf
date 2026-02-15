@@ -1,27 +1,42 @@
+locals {
+  backend_log_group_name  = "/ecs/${var.project_name}-${var.environment}-backend"
+  frontend_log_group_name = "/ecs/${var.project_name}-${var.environment}-frontend"
+  worker_log_group_name   = "/ecs/${var.project_name}-${var.environment}-worker"
+  beat_log_group_name     = "/ecs/${var.project_name}-${var.environment}-beat"
+}
+
 resource "aws_cloudwatch_log_group" "backend" {
-  name              = "/ecs/${var.project_name}-backend"
-  retention_in_days = 30
+  count = var.create_cloudwatch_log_groups ? 1 : 0
+
+  name              = local.backend_log_group_name
+  retention_in_days = var.cloudwatch_log_retention_days
 
   tags = { Name = "${var.project_name}-backend-logs" }
 }
 
 resource "aws_cloudwatch_log_group" "frontend" {
-  name              = "/ecs/${var.project_name}-frontend"
-  retention_in_days = 30
+  count = var.create_cloudwatch_log_groups ? 1 : 0
+
+  name              = local.frontend_log_group_name
+  retention_in_days = var.cloudwatch_log_retention_days
 
   tags = { Name = "${var.project_name}-frontend-logs" }
 }
 
 resource "aws_cloudwatch_log_group" "worker" {
-  name              = "/ecs/${var.project_name}-worker"
-  retention_in_days = 30
+  count = var.create_cloudwatch_log_groups ? 1 : 0
+
+  name              = local.worker_log_group_name
+  retention_in_days = var.cloudwatch_log_retention_days
 
   tags = { Name = "${var.project_name}-worker-logs" }
 }
 
 resource "aws_cloudwatch_log_group" "beat" {
-  name              = "/ecs/${var.project_name}-beat"
-  retention_in_days = 30
+  count = var.create_cloudwatch_log_groups ? 1 : 0
+
+  name              = local.beat_log_group_name
+  retention_in_days = var.cloudwatch_log_retention_days
 
   tags = { Name = "${var.project_name}-beat-logs" }
 }

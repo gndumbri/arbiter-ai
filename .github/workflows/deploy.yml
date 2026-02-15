@@ -167,6 +167,12 @@ jobs:
 
           echo "deploy_mode=${DEPLOY_MODE}" >> "$GITHUB_OUTPUT"
           echo "tf_state_key=${TF_STATE_KEY}" >> "$GITHUB_OUTPUT"
+          TF_VARS_FILE="environments/${DEPLOY_MODE}.tfvars"
+          if [ -f "$TF_VARS_FILE" ]; then
+            echo "tf_vars_file=${TF_VARS_FILE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tf_vars_file=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
@@ -187,7 +193,11 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          terraform plan \
+          PLAN_ARGS=()
+          if [ -n "${{ steps.context.outputs.tf_vars_file }}" ]; then
+            PLAN_ARGS+=("-var-file=${{ steps.context.outputs.tf_vars_file }}")
+          fi
+          terraform plan "${PLAN_ARGS[@]}" \
             -var="environment=${{ steps.context.outputs.deploy_mode }}" \
             -var="app_mode=${{ steps.context.outputs.deploy_mode }}" \
             -var="app_env=${{ steps.context.outputs.deploy_mode }}" \

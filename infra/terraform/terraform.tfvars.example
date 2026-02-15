@@ -15,6 +15,28 @@ email_provider        = "ses"
 inject_optional_sandbox_secrets = false
 sandbox_email_bypass_enabled = true
 
+# Deploy-mode defaults (recommended for restricted CI roles):
+# Reuse pre-existing infra instead of creating privileged foundation resources.
+create_networking            = false
+create_github_actions_iam    = false
+create_ecs_task_roles        = false
+manage_ecs_task_role_policies = false
+create_cloudwatch_log_groups = false
+create_efs_resources         = false
+create_data_services         = false
+enable_shared_uploads        = false
+
+# Optional explicit IDs (leave blank to auto-discover by tag/name where supported).
+existing_vpc_id              = ""
+existing_public_subnet_ids   = []
+existing_private_subnet_ids  = []
+existing_ecs_task_execution_role_arn = ""
+existing_ecs_task_role_arn           = ""
+existing_ecs_task_execution_role_name = "arbiter-ai-ecs-task-execution"
+existing_ecs_task_role_name           = "arbiter-ai-ecs-task"
+existing_efs_file_system_id   = ""
+existing_efs_access_point_id  = ""
+
 backend_image_tag  = "latest"
 frontend_image_tag = "latest"
 
@@ -45,6 +67,7 @@ ses_domain = "arbiter-ai.com"
 # - Frontend email (provider-specific, optional in sandbox): EMAIL_SERVER for SES or BREVO_API_KEY for Brevo
 
 # RDS PostgreSQL (db.t4g.micro + 20 GB = free-tier eligible)
+# Set create_data_services=true if Terraform should provision DB/Redis.
 db_instance_class    = "db.t4g.micro"
 db_allocated_storage = 20
 db_name              = "arbiter"

@@ -111,6 +111,8 @@
 - Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe + selected email provider keys to avoid startup failures when those keys are intentionally absent.
 - Terraform now provisions dedicated Celery `worker` and `beat` ECS services (in addition to API/frontend) so async ingestion and scheduled catalog/rules sync jobs run in AWS by default.
 - Terraform now provisions an EFS shared uploads volume and mounts it into backend/worker/beat task definitions at `UPLOADS_DIR`, ensuring reliable backend→worker file handoff for rules ingestion.
+- Terraform deployment defaults now support restricted IAM CI roles by reusing existing VPC/subnets/IAM roles/log groups (with explicit `create_*` and `existing_*` controls), preventing `AccessDenied` bootstrap failures during app-only deploys.
+- Deploy workflow now auto-loads `infra/terraform/environments/<deploy_mode>.tfvars` when present; sandbox includes a committed full-bootstrap profile for end-to-end AWS bring-up.
 - ECS task-definition health checks now avoid `curl` dependencies (backend uses Python stdlib probe; frontend uses Node fetch probe) for cleaner container startup on minimal base images.
 - Terraform environment defaults now consistently use `production` (not mixed `prod`/`production`), including RDS final-snapshot safeguards.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).

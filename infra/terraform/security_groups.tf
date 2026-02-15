@@ -2,7 +2,7 @@
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-alb-sg"
   description = "Allow HTTP/HTTPS inbound to ALB"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   tags = { Name = "${var.project_name}-alb-sg" }
 }
@@ -33,7 +33,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-ecs-sg"
   description = "Allow traffic from ALB to ECS tasks"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = local.vpc_id
 
   tags = { Name = "${var.project_name}-ecs-sg" }
 }

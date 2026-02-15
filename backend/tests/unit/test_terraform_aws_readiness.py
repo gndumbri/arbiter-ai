@@ -71,7 +71,8 @@ def test_terraform_mounts_shared_efs_volume_for_upload_handoff() -> None:
     assert 'resource "aws_efs_file_system" "uploads"' in efs_text
     assert 'resource "aws_efs_access_point" "uploads"' in efs_text
     assert 'containerPath = var.uploads_dir' in ecs_text
-    assert 'file_system_id     = aws_efs_file_system.uploads.id' in ecs_text
+    assert 'file_system_id     = local.resolved_efs_file_system_id' in ecs_text
+    assert 'shared_uploads_enabled' in ecs_text
 
 
 def test_terraform_task_role_has_bedrock_permissions() -> None:
@@ -115,3 +116,32 @@ def test_terraform_uses_production_environment_label_consistently_for_rds_snapsh
     assert 'default     = "production"' in vars_text
     assert 'skip_final_snapshot = var.environment != "production"' in rds_text
     assert 'var.environment == "production"' in rds_text
+
+
+def test_terraform_supports_existing_infra_deploy_mode_defaults() -> None:
+    vars_text = _read_tf("infra/terraform/variables.tf")
+    vpc_text = _read_tf("infra/terraform/vpc.tf")
+    iam_text = _read_tf("infra/terraform/iam.tf")
+    cloudwatch_text = _read_tf("infra/terraform/cloudwatch.tf")
+
+    assert 'variable "create_networking"' in vars_text
+    assert 'variable "create_ecs_task_roles"' in vars_text
+    assert 'variable "create_github_actions_iam"' in vars_text
+    assert 'variable "create_cloudwatch_log_groups"' in vars_text
+    assert 'variable "create_efs_resources"' in vars_text
+    assert 'variable "create_data_services"' in vars_text
+    assert 'default     = false' in vars_text
+    assert 'data "aws_vpcs" "existing"' in vpc_text
+    assert 'data "aws_iam_role" "existing_ecs_task_execution"' in iam_text
+    assert 'local.backend_log_group_name' in cloudwatch_text
+
+
+def test_terraform_commits_full_sandbox_bootstrap_profile() -> None:
+    sandbox_vars = _read_tf("infra/terraform/environments/sandbox.tfvars")
+
+    assert 'environment = "sandbox"' in sandbox_vars
+    assert "create_networking            = true" in sandbox_vars
+    assert "create_ecs_task_roles        = true" in sandbox_vars
+    assert "create_cloudwatch_log_groups = true" in sandbox_vars
+    assert "create_data_services         = true" in sandbox_vars
+    assert "create_efs_resources         = true" in sandbox_vars

@@ -33,3 +33,10 @@ def test_deploy_workflow_supports_state_key_and_mode_overrides() -> None:
     assert "terraform init -backend-config=\"key=${{ steps.context.outputs.tf_state_key }}\"" in text
     assert "-var=\"environment=${{ steps.context.outputs.deploy_mode }}\"" in text
     assert "-var=\"app_mode=${{ steps.context.outputs.deploy_mode }}\"" in text
+
+
+def test_deploy_workflow_loads_environment_tfvars_when_present() -> None:
+    text = _read_workflow()
+
+    assert "TF_VARS_FILE=\"environments/${DEPLOY_MODE}.tfvars\"" in text
+    assert "PLAN_ARGS+=(\"-var-file=${{ steps.context.outputs.tf_vars_file }}\")" in text

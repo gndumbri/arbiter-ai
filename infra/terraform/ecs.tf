@@ -68,6 +68,11 @@ locals {
       : []
   )
   uploads_volume_name = "uploads-shared"
+  shared_uploads_mount_points = local.shared_uploads_enabled ? [{
+    sourceVolume  = local.uploads_volume_name
+    containerPath = var.uploads_dir
+    readOnly      = false
+  }] : []
 }
 
 # --- Backend Task Definition ---
@@ -77,8 +82,8 @@ resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   cpu                      = var.backend_cpu
   memory                   = var.backend_memory
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = local.ecs_task_execution_role_arn
+  task_role_arn            = local.ecs_task_role_arn
 
   container_definitions = jsonencode([{
     name      = "backend"
@@ -92,11 +97,7 @@ resource "aws_ecs_task_definition" "backend" {
 
     environment = local.backend_runtime_env
 
-    mountPoints = [{
-      sourceVolume  = local.uploads_volume_name
-      containerPath = var.uploads_dir
-      readOnly      = false
-    }]
+    mountPoints = local.shared_uploads_mount_points
 
     secrets = concat(
       # Keep required runtime secrets always present; add optional ones by mode.
@@ -107,22 +108,28 @@ resource "aws_ecs_task_definition" "backend" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.backend.name
+        "awslogs-group"         = local.backend_log_group_name
         "awslogs-region"        = var.aws_region
         "awslogs-stream-prefix" = "ecs"
       }
     }
   }])
 
-  volume {
-    name = local.uploads_volume_name
-    efs_volume_configuration {
-      file_system_id     = aws_efs_file_system.uploads.id
-      transit_encryption = "ENABLED"
+  dynamic "volume" {
+    for_each = local.shared_uploads_enabled ? [1] : []
+    content {
+      name = local.uploads_volume_name
+      efs_volume_configuration {
+        file_system_id     = local.resolved_efs_file_system_id
+        transit_encryption = "ENABLED"
 
-      authorization_config {
-        access_point_id = aws_efs_access_point.uploads.id
-        iam             = "DISABLED"
+        dynamic "authorization_config" {
+          for_each = local.resolved_efs_access_point_id != "" ? [1] : []
+          content {
+            access_point_id = local.resolved_efs_access_point_id
+            iam             = "DISABLED"
+          }
+        }
       }
     }
   }
@@ -137,8 +144,8 @@ resource "aws_ecs_task_definition" "worker" {
   network_mode             = "awsvpc"
   cpu                      = var.worker_cpu
   memory                   = var.worker_memory
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = local.ecs_task_execution_role_arn
+  task_role_arn            = local.ecs_task_role_arn
 
   container_definitions = jsonencode([{
     name      = "worker"
@@ -148,11 +155,7 @@ resource "aws_ecs_task_definition" "worker" {
 
     environment = local.backend_runtime_env
 
-    mountPoints = [{
-      sourceVolume  = local.uploads_volume_name
-      containerPath = var.uploads_dir
-      readOnly      = false
-    }]
+    mountPoints = local.shared_uploads_mount_points
 
     secrets = concat(
       local.backend_base_secrets,
@@ -162,22 +165,28 @@ resource "aws_ecs_task_definition" "worker" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.worker.name
+        "awslogs-group"         = local.worker_log_group_name
         "awslogs-region"        = var.aws_region
         "awslogs-stream-prefix" = "ecs"
       }
     }
   }])
 
-  volume {
-    name = local.uploads_volume_name
-    efs_volume_configuration {
-      file_system_id     = aws_efs_file_system.uploads.id
-      transit_encryption = "ENABLED"
+  dynamic "volume" {
+    for_each = local.shared_uploads_enabled ? [1] : []
+    content {
+      name = local.uploads_volume_name
+      efs_volume_configuration {
+        file_system_id     = local.resolved_efs_file_system_id
+        transit_encryption = "ENABLED"
 
-      authorization_config {
-        access_point_id = aws_efs_access_point.uploads.id
-        iam             = "DISABLED"
+        dynamic "authorization_config" {
+          for_each = local.resolved_efs_access_point_id != "" ? [1] : []
+          content {
+            access_point_id = local.resolved_efs_access_point_id
+            iam             = "DISABLED"
+          }
+        }
       }
     }
   }
@@ -192,8 +201,8 @@ resource "aws_ecs_task_definition" "beat" {
   network_mode             = "awsvpc"
   cpu                      = var.beat_cpu
   memory                   = var.beat_memory
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = local.ecs_task_execution_role_arn
+  task_role_arn            = local.ecs_task_role_arn
 
   container_definitions = jsonencode([{
     name      = "beat"
@@ -203,11 +212,7 @@ resource "aws_ecs_task_definition" "beat" {
 
     environment = local.backend_runtime_env
 
-    mountPoints = [{
-      sourceVolume  = local.uploads_volume_name
-      containerPath = var.uploads_dir
-      readOnly      = false
-    }]
+    mountPoints = local.shared_uploads_mount_points
 
     secrets = concat(
       local.backend_base_secrets,
@@ -217,22 +222,28 @@ resource "aws_ecs_task_definition" "beat" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.beat.name
+        "awslogs-group"         = local.beat_log_group_name
         "awslogs-region"        = var.aws_region
         "awslogs-stream-prefix" = "ecs"
       }
     }
   }])
 
-  volume {
-    name = local.uploads_volume_name
-    efs_volume_configuration {
-      file_system_id     = aws_efs_file_system.uploads.id
-      transit_encryption = "ENABLED"
+  dynamic "volume" {
+    for_each = local.shared_uploads_enabled ? [1] : []
+    content {
+      name = local.uploads_volume_name
+      efs_volume_configuration {
+        file_system_id     = local.resolved_efs_file_system_id
+        transit_encryption = "ENABLED"
 
-      authorization_config {
-        access_point_id = aws_efs_access_point.uploads.id
-        iam             = "DISABLED"
+        dynamic "authorization_config" {
+          for_each = local.resolved_efs_access_point_id != "" ? [1] : []
+          content {
+            access_point_id = local.resolved_efs_access_point_id
+            iam             = "DISABLED"
+          }
+        }
       }
     }
   }
@@ -247,8 +258,8 @@ resource "aws_ecs_task_definition" "frontend" {
   network_mode             = "awsvpc"
   cpu                      = var.frontend_cpu
   memory                   = var.frontend_memory
-  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
+  execution_role_arn       = local.ecs_task_execution_role_arn
+  task_role_arn            = local.ecs_task_role_arn
 
   container_definitions = jsonencode([{
     name      = "frontend"
@@ -266,7 +277,7 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "NODE_OPTIONS", value = var.frontend_node_options },
       { name = "AUTH_TRUST_HOST", value = "true" },
-      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
+      { name = "AUTH_URL", value = local.resolved_app_base_url },
       { name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url },
       { name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url },
       # Sandbox-only tester bypass gate (forced off outside sandbox).
@@ -286,7 +297,7 @@ resource "aws_ecs_task_definition" "frontend" {
     logConfiguration = {
       logDriver = "awslogs"
       options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.frontend.name
+        "awslogs-group"         = local.frontend_log_group_name
         "awslogs-region"        = var.aws_region
         "awslogs-stream-prefix" = "ecs"
       }
@@ -304,7 +315,7 @@ resource "aws_ecs_service" "backend" {
   enable_execute_command = true
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
@@ -334,7 +345,7 @@ resource "aws_ecs_service" "frontend" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
@@ -365,7 +376,7 @@ resource "aws_ecs_service" "worker" {
   enable_execute_command = true
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }
@@ -381,7 +392,7 @@ resource "aws_ecs_service" "beat" {
   enable_execute_command = true
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = false
   }

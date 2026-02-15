@@ -45,31 +45,31 @@ output "beat_service_name" {
 
 output "github_actions_role_arn" {
   description = "IAM role ARN for GitHub Actions OIDC"
-  value       = aws_iam_role.github_actions.arn
+  value       = try(aws_iam_role.github_actions[0].arn, null)
 }
 
 output "rds_endpoint" {
   description = "RDS instance endpoint (host:port)"
-  value       = aws_db_instance.main.endpoint
+  value       = try(aws_db_instance.main[0].endpoint, null)
 }
 
 output "rds_database_url" {
   description = "Constructed DATABASE_URL — update this value in Secrets Manager"
-  value       = "postgresql+asyncpg://${var.db_username}:${var.db_password}@${aws_db_instance.main.endpoint}/${var.db_name}"
+  value       = try("postgresql+asyncpg://${var.db_username}:${var.db_password}@${aws_db_instance.main[0].endpoint}/${var.db_name}", null)
   sensitive   = true
 }
 
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint (host:port)"
-  value       = "${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+  value       = try("${aws_elasticache_cluster.main[0].cache_nodes[0].address}:${aws_elasticache_cluster.main[0].cache_nodes[0].port}", null)
 }
 
 output "redis_url" {
   description = "Constructed REDIS_URL — update this value in Secrets Manager"
-  value       = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}/0"
+  value       = try("redis://${aws_elasticache_cluster.main[0].cache_nodes[0].address}:${aws_elasticache_cluster.main[0].cache_nodes[0].port}/0", null)
 }
 
 output "uploads_efs_id" {
   description = "EFS filesystem id used for shared backend/worker uploads"
-  value       = aws_efs_file_system.uploads.id
+  value       = local.resolved_efs_file_system_id
 }

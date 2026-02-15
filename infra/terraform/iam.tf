@@ -1,21 +1,67 @@
 data "aws_caller_identity" "current" {}
 
+locals {
+  existing_ecs_task_execution_role_name = var.existing_ecs_task_execution_role_name != "" ? var.existing_ecs_task_execution_role_name : "${var.project_name}-ecs-task-execution"
+  existing_ecs_task_role_name           = var.existing_ecs_task_role_name != "" ? var.existing_ecs_task_role_name : "${var.project_name}-ecs-task"
+
+  resolve_execution_role_via_data = !var.create_ecs_task_roles && (var.existing_ecs_task_execution_role_arn == "" || var.manage_ecs_task_role_policies)
+  resolve_task_role_via_data      = !var.create_ecs_task_roles && (var.existing_ecs_task_role_arn == "" || var.manage_ecs_task_role_policies)
+}
+
+data "aws_iam_role" "existing_ecs_task_execution" {
+  count = local.resolve_execution_role_via_data ? 1 : 0
+  name  = local.existing_ecs_task_execution_role_name
+}
+
+data "aws_iam_role" "existing_ecs_task" {
+  count = local.resolve_task_role_via_data ? 1 : 0
+  name  = local.existing_ecs_task_role_name
+}
+
+locals {
+  ecs_task_execution_role_arn = var.create_ecs_task_roles ? aws_iam_role.ecs_task_execution[0].arn : (
+    var.existing_ecs_task_execution_role_arn != "" ? var.existing_ecs_task_execution_role_arn : data.aws_iam_role.existing_ecs_task_execution[0].arn
+  )
+  ecs_task_execution_role_name = var.create_ecs_task_roles ? aws_iam_role.ecs_task_execution[0].name : (
+    var.existing_ecs_task_execution_role_name != "" ? var.existing_ecs_task_execution_role_name : data.aws_iam_role.existing_ecs_task_execution[0].name
+  )
+  ecs_task_role_arn = var.create_ecs_task_roles ? aws_iam_role.ecs_task[0].arn : (
+    var.existing_ecs_task_role_arn != "" ? var.existing_ecs_task_role_arn : data.aws_iam_role.existing_ecs_task[0].arn
+  )
+  ecs_task_role_name = var.create_ecs_task_roles ? aws_iam_role.ecs_task[0].name : (
+    var.existing_ecs_task_role_name != "" ? var.existing_ecs_task_role_name : data.aws_iam_role.existing_ecs_task[0].name
+  )
+  manage_task_role_policies = var.create_ecs_task_roles || var.manage_ecs_task_role_policies
+}
+
+check "ecs_task_roles_inputs" {
+  assert = var.create_ecs_task_roles || (
+    local.ecs_task_execution_role_arn != "" &&
+    local.ecs_task_role_arn != ""
+  )
+
+  error_message = "create_ecs_task_roles=false requires existing ECS task role ARNs or discoverable role names."
+}
+
 # --- GitHub Actions OIDC (keyless auth for CI/CD) ---
 resource "aws_iam_openid_connect_provider" "github_actions" {
+  count = var.create_github_actions_iam ? 1 : 0
+
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 resource "aws_iam_role" "github_actions" {
-  name = "${var.project_name}-github-actions"
+  count = var.create_github_actions_iam ? 1 : 0
+  name  = "${var.project_name}-github-actions"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect = "Allow"
       Principal = {
-        Federated = aws_iam_openid_connect_provider.github_actions.arn
+        Federated = aws_iam_openid_connect_provider.github_actions[0].arn
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
@@ -31,8 +77,9 @@ resource "aws_iam_role" "github_actions" {
 }
 
 resource "aws_iam_role_policy" "github_actions" {
-  name = "${var.project_name}-github-actions-deploy"
-  role = aws_iam_role.github_actions.id
+  count = var.create_github_actions_iam ? 1 : 0
+  name  = "${var.project_name}-github-actions-deploy"
+  role  = aws_iam_role.github_actions[0].id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -203,7 +250,8 @@ resource "aws_iam_role_policy" "github_actions" {
 
 # --- ECS Task Execution Role (used by ECS agent to pull images, write logs, read secrets) ---
 resource "aws_iam_role" "ecs_task_execution" {
-  name = "${var.project_name}-ecs-task-execution"
+  count = var.create_ecs_task_roles ? 1 : 0
+  name  = "${var.project_name}-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -216,13 +264,17 @@ resource "aws_iam_role" "ecs_task_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
-  role       = aws_iam_role.ecs_task_execution.name
+  count = local.manage_task_role_policies ? 1 : 0
+
+  role       = local.ecs_task_execution_role_name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy" "ecs_secrets_access" {
+  count = local.manage_task_role_policies ? 1 : 0
+
   name = "${var.project_name}-secrets-access"
-  role = aws_iam_role.ecs_task_execution.id
+  role = local.ecs_task_execution_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -236,7 +288,8 @@ resource "aws_iam_role_policy" "ecs_secrets_access" {
 
 # --- ECS Task Role (used by the running container) ---
 resource "aws_iam_role" "ecs_task" {
-  name = "${var.project_name}-ecs-task"
+  count = var.create_ecs_task_roles ? 1 : 0
+  name  = "${var.project_name}-ecs-task"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -251,8 +304,10 @@ resource "aws_iam_role" "ecs_task" {
 # WHY: ECS Exec requires SSM permissions on the task role so the agent
 # can open a session to the container (used for running migrations, debugging).
 resource "aws_iam_role_policy" "ecs_task_ssm" {
+  count = local.manage_task_role_policies ? 1 : 0
+
   name = "${var.project_name}-ecs-task-ssm"
-  role = aws_iam_role.ecs_task.id
+  role = local.ecs_task_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -272,8 +327,10 @@ resource "aws_iam_role_policy" "ecs_task_ssm" {
 # WHY: Backend defaults to Bedrock for both LLM and embeddings.
 # Task role must be allowed to invoke Bedrock foundation models.
 resource "aws_iam_role_policy" "ecs_task_bedrock" {
+  count = local.manage_task_role_policies ? 1 : 0
+
   name = "${var.project_name}-ecs-task-bedrock"
-  role = aws_iam_role.ecs_task.id
+  role = local.ecs_task_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"

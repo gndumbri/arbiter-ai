@@ -13,8 +13,10 @@ resource "aws_ses_domain_dkim" "main" {
 # --- IAM: Allow frontend ECS task role to send emails via SES ---
 
 resource "aws_iam_role_policy" "ecs_task_ses" {
+  count = local.manage_task_role_policies && lower(var.email_provider) == "ses" ? 1 : 0
+
   name = "${var.project_name}-ecs-task-ses"
-  role = aws_iam_role.ecs_task.id
+  role = local.ecs_task_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
