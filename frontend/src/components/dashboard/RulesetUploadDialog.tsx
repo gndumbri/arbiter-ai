@@ -45,6 +45,12 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api, CatalogEntry } from "@/lib/api";
 
+const READY_STATUSES = new Set(["READY", "INDEXED", "COMPLETE", "PUBLISHED"]);
+
+function isReadyStatus(status: string) {
+  return READY_STATUSES.has(status.toUpperCase());
+}
+
 /**
  * Status badge component — shows visual indicator for game readiness.
  *
@@ -52,7 +58,7 @@ import { api, CatalogEntry } from "@/lib/api";
  * (READY) or need to upload their own rulebook (UPLOAD_REQUIRED).
  */
 function StatusBadge({ status }: { status: string }) {
-  if (status === "READY") {
+  if (isReadyStatus(status)) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-400">
         <Zap className="h-3 w-3" />
@@ -126,18 +132,17 @@ export function RulesetUploadDialog() {
   const handleSelectGame = async (game: CatalogEntry) => {
     setSelectedGame(game);
 
-    if (game.status === "READY") {
+    if (isReadyStatus(game.status)) {
       // Bucket A: Open content → create session → redirect to chat
       setIsLoading(true);
       try {
-        await api.createSession({ game_name: game.game_name });
+        const session = await api.createSession({ game_name: game.game_name });
         toast({
           title: "Ready to judge!",
           description: `${game.game_name} rules are loaded. Start asking questions!`,
         });
         setOpen(false);
-        router.push("/dashboard");
-        router.refresh();
+        router.push(`/session/${session.id}`);
       } catch (error) {
         toast({
           title: "Session failed",

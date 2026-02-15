@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { Shield, Sparkles } from "lucide-react";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -19,9 +19,8 @@ export default function DashboardLayout({
     { href: "/dashboard/catalog", label: "Armory" },
     { href: "/dashboard/rulings", label: "Scrolls" },
     { href: "/dashboard/parties", label: "Guild" },
-    { href: "/dashboard/agents", label: "Ask" },
-    { href: "/dashboard/settings", label: "Settings" },
   ];
+  const askIsActive = pathname.startsWith("/dashboard/agents") || pathname.startsWith("/session/");
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -50,7 +49,19 @@ export default function DashboardLayout({
               </Link>
             ))}
           </nav>
-          <div className="ml-auto flex items-center space-x-4">
+          <div className="ml-auto flex items-center space-x-2 sm:space-x-3">
+            <Link
+              href="/dashboard/agents"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition-all",
+                "bg-gradient-to-r from-orange-500 via-rose-500 to-red-500 text-white shadow-sm",
+                "hover:brightness-110 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60",
+                askIsActive && "ring-2 ring-rose-300/70"
+              )}
+            >
+              <Sparkles className="h-4 w-4" />
+              Ask
+            </Link>
             <UserMenu />
           </div>
         </div>

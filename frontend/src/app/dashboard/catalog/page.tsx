@@ -36,6 +36,10 @@ const FALLBACK_GAMES: CatalogEntry[] = [
   { id: "common-pandemic",    game_name: "Pandemic",                       game_slug: "pandemic",          publisher_name: "Z-Man Games",          version: "2020",   status: "UPLOAD_REQUIRED" },
 ];
 
+function normalizeGameKey(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
 export default function CatalogPage() {
   const [search, setSearch] = useState("");
   // Track which games the user has added in this session for instant UI feedback
@@ -49,15 +53,17 @@ export default function CatalogPage() {
   });
 
   // Fetch user's existing library to show "Already in Library" state
-  const { data: libraryEntries } = useSWR("library", api.listLibrary, {
+  const { data: libraryEntries, mutate: mutateLibrary } = useSWR("library", api.listLibrary, {
     onError: () => {},
   });
 
   // Build a set of slugs already in the user's library
   const librarySlugSet = new Set<string>();
+  const libraryNameSet = new Set<string>();
   if (libraryEntries) {
     for (const entry of libraryEntries) {
       librarySlugSet.add(entry.game_slug);
+      libraryNameSet.add(normalizeGameKey(entry.game_name));
     }
   }
 
@@ -72,6 +78,14 @@ export default function CatalogPage() {
       g.publisher_name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const isGameInLibrary = (game: CatalogEntry) => {
+    return (
+      addedSlugs.has(game.game_slug)
+      || librarySlugSet.has(game.game_slug)
+      || libraryNameSet.has(normalizeGameKey(game.game_name))
+    );
+  };
+
   /**
    * Handle "Add to Library" button click.
    * Calls POST /api/v1/library and updates local state on success.
@@ -79,14 +93,14 @@ export default function CatalogPage() {
    * button updates instantly without waiting for SWR to refetch.
    */
   const handleAddToLibrary = async (game: CatalogEntry) => {
-    if (addingSlugs.has(game.game_slug) || addedSlugs.has(game.game_slug) || librarySlugSet.has(game.game_slug)) {
+    if (addingSlugs.has(game.game_slug) || isGameInLibrary(game)) {
       return; // Already adding or already in library
     }
 
     setAddingSlugs((prev) => new Set(prev).add(game.game_slug));
 
     try {
-      await api.addToLibrary({
+      const created = await api.addToLibrary({
         game_slug: game.game_slug,
         game_name: game.game_name,
         // WHY: Only pass official_ruleset_id if the game has a real backend ID (not common-* prefix)
@@ -94,6 +108,7 @@ export default function CatalogPage() {
       });
 
       setAddedSlugs((prev) => new Set(prev).add(game.game_slug));
+      mutateLibrary((prev = []) => [created, ...prev], false);
       toast({
         title: "Loot Acquired!",
         description: `${game.game_name} has been added to your shelf.`,
@@ -103,6 +118,7 @@ export default function CatalogPage() {
       // WHY: 409 means already in library — treat as success, not error
       if (message.includes("already")) {
         setAddedSlugs((prev) => new Set(prev).add(game.game_slug));
+        mutateLibrary();
         toast({
           title: "Already in Library",
           description: `${game.game_name} is already in your library.`,
@@ -129,7 +145,7 @@ export default function CatalogPage() {
    * is already in the library, currently being added, or available.
    */
   const getButtonState = (game: CatalogEntry) => {
-    const isInLibrary = librarySlugSet.has(game.game_slug) || addedSlugs.has(game.game_slug);
+    const isInLibrary = isGameInLibrary(game);
     const isAdding = addingSlugs.has(game.game_slug);
 
     if (isInLibrary) {

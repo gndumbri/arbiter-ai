@@ -20,7 +20,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DbSession
 from app.api.rate_limit import RateLimitDep
 from app.config import get_settings
-from app.models.tables import Party, PartyGameShare, PartyMember
+from app.models.tables import Party, PartyGameShare, PartyMember, User
 
 router = APIRouter(prefix="/api/v1/parties", tags=["parties"])
 
@@ -48,6 +48,8 @@ class PartyMemberResponse(BaseModel):
     """Response shape for a party member."""
 
     user_id: str
+    user_name: str | None = None
+    user_email: str | None = None
     role: str  # "OWNER" | "MEMBER"
     joined_at: str | None
 
@@ -188,17 +190,22 @@ async def list_party_members(
         raise HTTPException(status_code=403, detail="Not a member of this party")
 
     result = await db.execute(
-        select(PartyMember).where(PartyMember.party_id == party_id)
+        select(PartyMember, User)
+        .join(User, PartyMember.user_id == User.id)
+        .where(PartyMember.party_id == party_id)
+        .order_by(PartyMember.joined_at.asc())
     )
-    members = result.scalars().all()
+    members = result.all()
 
     return [
         PartyMemberResponse(
-            user_id=str(m.user_id),
-            role=m.role,
-            joined_at=m.joined_at.isoformat() if m.joined_at else None,
+            user_id=str(member.user_id),
+            user_name=user_record.name,
+            user_email=user_record.email,
+            role=member.role,
+            joined_at=member.joined_at.isoformat() if member.joined_at else None,
         )
-        for m in members
+        for member, user_record in members
     ]
 
 

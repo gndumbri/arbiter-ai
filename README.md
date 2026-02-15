@@ -153,6 +153,8 @@ See these templates:
 | `APP_BASE_URL`          | All      | Canonical frontend URL for Stripe/invite links   |
 | `TRUSTED_PROXY_HOPS`    | All      | Trusted proxy depth for `X-Forwarded-For`        |
 
+When deploying to ECS with Secrets Manager JSON-key injection, only map keys your runtime actually uses. For Bedrock + pgvector, do not include `PINECONE_API_KEY` in task-definition `secrets`.
+
 ### Frontend (`frontend/.env`)
 
 | Variable          | Required | Description                          |

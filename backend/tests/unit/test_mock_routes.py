@@ -14,6 +14,8 @@ Run with: cd backend && uv run pytest tests/unit/test_mock_routes.py -v
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -198,6 +200,21 @@ async def test_mock_add_to_library(mock_client: AsyncClient):
     assert data["game_name"] == "Spirit Island"
 
 
+@pytest.mark.anyio
+async def test_mock_add_to_library_persists_in_list(mock_client: AsyncClient):
+    game_name = f"Test Game {uuid.uuid4()}"
+    create_resp = await mock_client.post(
+        "/api/v1/library",
+        json={"game_name": game_name},
+    )
+    assert create_resp.status_code == 201
+
+    list_resp = await mock_client.get("/api/v1/library")
+    assert list_resp.status_code == 200
+    names = {entry["game_name"] for entry in list_resp.json()}
+    assert game_name in names
+
+
 # ─── Rulings ──────────────────────────────────────────────────────────────────
 
 
@@ -253,6 +270,20 @@ async def test_mock_list_agents(mock_client: AsyncClient):
     assert isinstance(data, list)
     assert len(data) > 0
     assert "game_name" in data[0]
+
+
+# ─── Parties ─────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_mock_list_party_members_includes_name_and_email(mock_client: AsyncClient):
+    response = await mock_client.get("/api/v1/parties/00000000-0000-4000-a000-000000000600/members")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+    assert "user_name" in data[0]
+    assert "user_email" in data[0]
 
 
 # ─── Rulesets ─────────────────────────────────────────────────────────────────

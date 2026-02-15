@@ -15,6 +15,7 @@ export default function DashboardPage() {
   const { data: rulesets, error, isLoading } = useSWR("rulesets", api.listRulesets, {
     refreshInterval: 5000, 
   });
+  const { data: libraryEntries } = useSWR("library", api.listLibrary, { onError: () => {} });
 
   // Fetch recent sessions for "Continue" section
   const { data: agents } = useSWR("agents", api.listAgents, { onError: () => {} });
@@ -55,6 +56,20 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Shelf Games — Claimed from Armory ───────────────────────── */}
+      {libraryEntries && libraryEntries.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-muted-foreground">Games on Your Shelf</h3>
+          <div className="flex flex-wrap gap-2">
+            {libraryEntries.slice(0, 10).map((entry) => (
+              <Badge key={entry.id} variant={entry.favorite ? "default" : "secondary"}>
+                {entry.game_name}
+              </Badge>
             ))}
           </div>
         </div>
@@ -125,7 +140,7 @@ export default function DashboardPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "INDEXED" || status === "COMPLETE") {
+  if (status === "INDEXED" || status === "COMPLETE" || status === "READY") {
     return (
       <Badge variant="outline" className="border-green-500 text-green-500">
         <CheckCircle className="mr-1 h-3 w-3" />

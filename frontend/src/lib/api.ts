@@ -72,6 +72,8 @@ export interface PartyResponse {
 
 export interface PartyMemberResponse {
   user_id: string;
+  user_name?: string | null;
+  user_email?: string | null;
   role: string;
   joined_at: string | null;
 }
@@ -479,4 +481,3 @@ export interface AgentEntry {
   persona: string | null;
   created_at: string | null;
 }
-

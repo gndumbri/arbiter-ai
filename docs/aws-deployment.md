@@ -184,6 +184,10 @@ aws secretsmanager create-secret \
   }'
 ```
 
+> [!IMPORTANT]
+> ECS fails startup if your task definition references a JSON key that does not exist in the secret payload.  
+> If you are using `pgvector` + Bedrock, do **not** reference `PINECONE_API_KEY` (or other unused keys) in `containerDefinitions[].secrets`.
+
 ---
 
 ## Step 2: Build and Push Images
@@ -237,6 +241,29 @@ In the ECS task definition, reference Secrets Manager:
       "name": "DATABASE_URL",
       "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCT>:secret:arbiter-ai/production:DATABASE_URL::"
     }
+  ]
+}
+```
+
+Backend (Bedrock + pgvector) should only map keys you actually use, for example:
+
+```json
+{
+  "secrets": [
+    { "name": "DATABASE_URL", "valueFrom": "arn:aws:secretsmanager:...:secret:arbiter-ai/production:DATABASE_URL::" },
+    { "name": "REDIS_URL", "valueFrom": "arn:aws:secretsmanager:...:secret:arbiter-ai/production:REDIS_URL::" },
+    { "name": "NEXTAUTH_SECRET", "valueFrom": "arn:aws:secretsmanager:...:secret:arbiter-ai/production:NEXTAUTH_SECRET::" },
+    { "name": "STRIPE_SECRET_KEY", "valueFrom": "arn:aws:secretsmanager:...:secret:arbiter-ai/production:STRIPE_SECRET_KEY::" },
+    { "name": "STRIPE_WEBHOOK_SECRET", "valueFrom": "arn:aws:secretsmanager:...:secret:arbiter-ai/production:STRIPE_WEBHOOK_SECRET::" }
+  ],
+  "environment": [
+    { "name": "APP_MODE", "value": "production" },
+    { "name": "APP_ENV", "value": "production" },
+    { "name": "AWS_REGION", "value": "us-east-1" },
+    { "name": "LLM_PROVIDER", "value": "bedrock" },
+    { "name": "EMBEDDING_PROVIDER", "value": "bedrock" },
+    { "name": "VECTOR_STORE_PROVIDER", "value": "pgvector" },
+    { "name": "RERANKER_PROVIDER", "value": "flashrank" }
   ]
 }
 ```

@@ -34,6 +34,11 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - IP abuse controls now use trusted proxy-depth parsing (`TRUSTED_PROXY_HOPS`) to prevent spoofed `X-Forwarded-For`.
 - Party invite join flow now validates token payload shape and reuses standard party rate limits without runtime errors.
 - New environment templates added for AWS sandbox/production bootstrap (`backend/.env.*.example`, `frontend/.env.*.example`).
+- "Add Game" wizard now treats `INDEXED`/`COMPLETE`/`PUBLISHED` as chat-ready and routes directly to the created session.
+- Party member responses now include display name/email, and Guild member UI shows names instead of raw UUID-only labels.
+- Dashboard top nav now removes redundant Settings tab (avatar menu remains) and promotes Ask as the primary right-side CTA.
+- Mock library endpoints now persist in-memory add/remove/favorite changes during runtime for realistic frontend testing.
+- Shelf dashboard now surfaces claimed library games so "added from Armory" state is visible in the main view.
 
 ### F1: Game Library (Dashboard)
 

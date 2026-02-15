@@ -53,6 +53,15 @@
                                 └───────────────────────┘
 ```
 
+### 1.3 Recent Updates (2026-02-15)
+
+- Dashboard nav now uses a primary right-side Ask CTA and removes the duplicate Settings tab (settings remain in avatar menu).
+- Add-game flow now treats `READY`, `INDEXED`, `COMPLETE`, and `PUBLISHED` statuses as immediately chat-ready.
+- Ready game selection now redirects directly to `/session/{id}` after session creation.
+- Party member API responses now include `user_name` and `user_email` for UI display.
+- Mock API library routes now keep in-memory state for add/remove/favorite behavior during UI testing.
+- Shelf dashboard now renders claimed library games from `/api/v1/library` for immediate user feedback.
+
 ---
 
 ## 2. Database Schema

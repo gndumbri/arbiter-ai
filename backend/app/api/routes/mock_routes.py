@@ -43,9 +43,24 @@ from app.mock.fixtures import (
     MOCK_SESSIONS,
     MOCK_SUBSCRIPTION,
     MOCK_TIERS,
+    MOCK_USERS,
 )
 
 logger = logging.getLogger(__name__)
+
+MOCK_LIBRARY_STATE = [dict(entry) for entry in MOCK_LIBRARY]
+MOCK_PARTY_MEMBERS_STATE = {
+    party_id: [dict(member) for member in members]
+    for party_id, members in MOCK_PARTY_MEMBERS.items()
+}
+
+
+def _lookup_mock_user(user_id: str) -> dict[str, Any] | None:
+    """Return a fixture user by ID, if present."""
+    for user in MOCK_USERS.values():
+        if user["id"] == user_id:
+            return user
+    return None
 
 
 # ─── Request Schemas ──────────────────────────────────────────────────────────
@@ -77,7 +92,8 @@ class MockFeedbackRequest(BaseModel):
 class MockLibraryAddGame(BaseModel):
     """Add game to library."""
     game_name: str
-    official_ruleset_ids: list[str] | None = None
+    game_slug: str | None = None
+    official_ruleset_id: str | None = None
 
 
 class MockRulingSave(BaseModel):
@@ -305,8 +321,8 @@ async def mock_list_library():
     Returns:
         List of mock library entry dicts.
     """
-    logger.debug("Mock: GET /library → returning %d entries", len(MOCK_LIBRARY))
-    return MOCK_LIBRARY
+    logger.debug("Mock: GET /library → returning %d entries", len(MOCK_LIBRARY_STATE))
+    return MOCK_LIBRARY_STATE
 
 
 @api_router.post("/library", status_code=201, tags=["library"])
@@ -319,7 +335,23 @@ async def mock_add_to_library(body: MockLibraryAddGame):
     Returns:
         A freshly generated library entry dict.
     """
-    entry = create_mock_library_entry(body.game_name)
+    existing = next(
+        (
+            entry
+            for entry in MOCK_LIBRARY_STATE
+            if entry["game_name"].strip().lower() == body.game_name.strip().lower()
+        ),
+        None,
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="This game is already in your library.")
+
+    entry = create_mock_library_entry(body.game_name, body.game_slug)
+    if body.official_ruleset_id:
+        entry["official_ruleset_id"] = body.official_ruleset_id
+        entry["added_from_catalog"] = True
+
+    MOCK_LIBRARY_STATE.insert(0, entry)
     logger.info("Mock: POST /library → added '%s'", body.game_name)
     return entry
 
@@ -334,8 +366,12 @@ async def mock_remove_from_library(entry_id: str):
     Returns:
         Confirmation dict.
     """
-    logger.info("Mock: DELETE /library/%s → removed", entry_id)
-    return {"status": "deleted", "id": entry_id}
+    for idx, entry in enumerate(MOCK_LIBRARY_STATE):
+        if entry["id"] == entry_id:
+            del MOCK_LIBRARY_STATE[idx]
+            logger.info("Mock: DELETE /library/%s → removed", entry_id)
+            return {"status": "deleted", "id": entry_id}
+    raise HTTPException(status_code=404, detail="Library entry not found.")
 
 
 @api_router.patch("/library/{entry_id}/favorite", tags=["library"])
@@ -348,8 +384,14 @@ async def mock_toggle_favorite(entry_id: str):
     Returns:
         Confirmation with new favorite status.
     """
-    logger.info("Mock: PATCH /library/%s/favorite → toggled", entry_id)
-    return {"status": "updated", "id": entry_id, "is_favorite": True}
+    for entry in MOCK_LIBRARY_STATE:
+        if entry["id"] == entry_id:
+            next_value = not bool(entry.get("favorite"))
+            entry["favorite"] = next_value
+            entry["is_favorite"] = next_value
+            logger.info("Mock: PATCH /library/%s/favorite → toggled", entry_id)
+            return {"id": entry_id, "favorite": next_value}
+    raise HTTPException(status_code=404, detail="Library entry not found.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -469,9 +511,35 @@ async def mock_get_party(party_id: str):
     """
     for party in MOCK_PARTIES:
         if party["id"] == party_id:
-            members = MOCK_PARTY_MEMBERS.get(party_id, [])
+            members = MOCK_PARTY_MEMBERS_STATE.get(party_id, [])
             return {**party, "members": members}
     raise HTTPException(status_code=404, detail="Party not found in mock data.")
+
+
+@api_router.get("/parties/{party_id}/members", tags=["parties"])
+async def mock_list_party_members(party_id: str):
+    """List members for a mock party with names/emails for UI display."""
+    members = MOCK_PARTY_MEMBERS_STATE.get(party_id)
+    if members is None:
+        raise HTTPException(status_code=404, detail="Party not found in mock data.")
+
+    # Match real route behavior: only members can view this list.
+    if not any(m["user_id"] == MOCK_CURRENT_USER["id"] for m in members):
+        raise HTTPException(status_code=403, detail="Not a member of this party")
+
+    enriched = []
+    for member in members:
+        user = _lookup_mock_user(member["user_id"])
+        enriched.append(
+            {
+                "user_id": member["user_id"],
+                "user_name": user.get("name") if user else None,
+                "user_email": user.get("email") if user else None,
+                "role": member["role"],
+                "joined_at": member.get("joined_at"),
+            }
+        )
+    return enriched
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
