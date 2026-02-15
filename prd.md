@@ -67,6 +67,8 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Backend deployment readiness now includes explicit preflight gates (`backend/scripts/preflight.py`, `make preflight-sandbox`, `make preflight-production`) that verify env configuration plus DB/Redis/provider health before promotion.
 - Deployment automation now includes a required CI preflight stage (`.github/workflows/deploy.yml`) so ECS service updates are blocked on failed readiness checks.
 - Frontend auth/email flow now degrades gracefully in sandbox (console fallback when Brevo is missing or transiently failing) while keeping production strict for delivery quality.
+- Ask flow now auto-links exact-name READY official rulesets when sessions were created without explicit linkage, and surfaces actionable indexing guidance instead of opaque judge failures.
+- Shelf-to-Ask flow now starts from library entries directly, reusing indexed game sessions or creating official rules-linked sessions so game selection and adjudication context stay aligned.
 - Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
 - Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
 - Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.

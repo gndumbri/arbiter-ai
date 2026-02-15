@@ -227,6 +227,8 @@ async def test_mock_add_to_library(mock_client: AsyncClient):
 
     data = response.json()
     assert data["game_name"] == "Spirit Island"
+    assert "official_ruleset_ids" in data
+    assert "personal_ruleset_ids" in data
 
 
 @pytest.mark.anyio
@@ -242,6 +244,23 @@ async def test_mock_add_to_library_persists_in_list(mock_client: AsyncClient):
     assert list_resp.status_code == 200
     names = {entry["game_name"] for entry in list_resp.json()}
     assert game_name in names
+
+
+@pytest.mark.anyio
+async def test_mock_start_session_from_library(mock_client: AsyncClient):
+    """Mock POST /library/{id}/sessions should return a linked session."""
+    list_resp = await mock_client.get("/api/v1/library")
+    assert list_resp.status_code == 200
+    library = list_resp.json()
+    assert len(library) > 0
+
+    entry_id = library[0]["id"]
+    response = await mock_client.post(f"/api/v1/library/{entry_id}/sessions")
+    assert response.status_code == 201
+
+    data = response.json()
+    assert data["game_name"] == library[0]["game_name"]
+    assert "active_ruleset_ids" in data
 
 
 # ─── Rulings ──────────────────────────────────────────────────────────────────

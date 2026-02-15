@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSmartBack } from "@/hooks/use-smart-back";
 import { ArrowLeft, Bot, FileText, CheckCircle, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function NewAgentPage() {
   const router = useRouter();
+  const goBack = useSmartBack("/dashboard/agents");
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +94,7 @@ export default function NewAgentPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-8 py-8">
       <div className="flex items-center space-x-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+        <Button variant="ghost" size="icon" onClick={goBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

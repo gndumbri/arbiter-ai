@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Lightbulb, FileText, Bookmark, Check } from "lucide-react";
@@ -55,6 +55,19 @@ export function MessageBubble({ message, gameName, sessionId, onCitationClick, o
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
+  const privacyRef = useRef<HTMLDivElement>(null);
+
+  // Close privacy dropdown when clicking outside
+  useEffect(() => {
+    if (!privacyOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (privacyRef.current && !privacyRef.current.contains(e.target as Node)) {
+        setPrivacyOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [privacyOpen]);
 
   // Fetch profile for default ruling privacy — SWR caches across all bubbles
   const { data: profile } = useSWR("profile", api.getProfile, { onError: () => {} });
@@ -130,7 +143,7 @@ export function MessageBubble({ message, gameName, sessionId, onCitationClick, o
                  </Badge>
                )}
                {/* Save Ruling Button with Privacy Dropdown */}
-               <div className="relative ml-auto">
+               <div className="relative ml-auto" ref={privacyRef}>
                  {saved ? (
                    <Button
                      variant="ghost"

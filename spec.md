@@ -97,6 +97,8 @@
 - Added a deploy-grade backend preflight command (`backend/scripts/preflight.py`) plus `make preflight-sandbox` / `make preflight-production` gates for environment, DB, Redis, provider stack, and optional live Bedrock probes.
 - Added a repo GitHub Actions deploy workflow (`.github/workflows/deploy.yml`) that runs an ECS preflight task as a required gate before backend service deployment.
 - Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when Brevo is unavailable; production remains strict.
+- Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
+- Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).
 - Ask/chat UI width now uses tighter max-width containers to avoid over-stretched desktop layouts.
 - Added `GET /api/v1/sessions/{id}` for reliable single-session metadata fetch (game, persona, prompt override) in chat surfaces.

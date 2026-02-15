@@ -144,3 +144,148 @@ def test_judge_uses_session_active_official_rulesets(
 
     assert response.status_code == 200
     assert captured["namespaces"] == [str(official_ruleset_id)]
+
+
+def test_judge_auto_binds_official_ruleset_by_game_name_when_session_not_linked(
+    client,
+    db_session,
+    override_user,
+    monkeypatch,
+):
+    """Judge should auto-resolve a READY BASE official ruleset by exact game name."""
+    official_ruleset_id = uuid.uuid4()
+    captured: dict[str, list[str]] = {}
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.expires_at = datetime.now(UTC) + timedelta(hours=24)
+    mock_session.game_name = "Root"
+    mock_session.persona = None
+    mock_session.system_prompt_override = None
+    mock_session.active_ruleset_ids = []
+    res_session = MagicMock()
+    res_session.scalar_one_or_none.return_value = mock_session
+
+    res_uploaded = MagicMock()
+    res_uploaded.all.return_value = []
+
+    # Fallback exact-name official match.
+    res_fallback = MagicMock()
+    res_fallback.all.return_value = [(official_ruleset_id,)]
+
+    res_sub = MagicMock()
+    res_sub.scalar_one_or_none.return_value = None
+
+    res_tier = MagicMock()
+    res_tier.scalar_one_or_none.return_value = None
+
+    res_usage = MagicMock()
+    res_usage.scalar_one.return_value = 0
+
+    db_session.execute.side_effect = [
+        res_session,
+        res_uploaded,
+        res_fallback,
+        res_sub,
+        res_tier,
+        res_usage,
+    ]
+
+    class DummyRegistry:
+        def get_llm(self):
+            return object()
+
+        def get_embedder(self):
+            return object()
+
+        def get_vector_store(self):
+            return object()
+
+        def get_reranker(self):
+            return object()
+
+    class DummyEngine:
+        def __init__(self, **kwargs):  # noqa: ARG002
+            pass
+
+        async def adjudicate(  # noqa: PLR0913
+            self,
+            *,
+            query: str,
+            namespaces: list[str],
+            game_name: str | None,
+            persona: str | None,
+            system_prompt_override: str | None,
+            conversation_history: list[dict[str, str]],
+        ):
+            captured["namespaces"] = namespaces
+            return SimpleNamespace(
+                query_id=str(uuid.uuid4()),
+                verdict=f"Resolved: {query}",
+                confidence=0.91,
+                reasoning_chain=None,
+                citations=[],
+                conflicts=None,
+                follow_up_hint=None,
+                model="mock-model",
+                expanded_query=query,
+                latency_ms=10,
+            )
+
+    monkeypatch.setattr("app.api.routes.judge.get_provider_registry", lambda: DummyRegistry())
+    monkeypatch.setattr("app.api.routes.judge.AdjudicationEngine", DummyEngine)
+
+    response = client.post(
+        "/api/v1/judge",
+        json={
+            "query": "Can I battle then move?",
+            "game_name": "Root",
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["namespaces"] == [str(official_ruleset_id)]
+
+
+def test_judge_returns_indexing_message_when_rulesets_processing(
+    client,
+    db_session,
+    override_user,
+):
+    """No ready namespaces with PROCESSING rulesets should return actionable 409."""
+    mock_session = MagicMock(spec=Session)
+    mock_session.expires_at = datetime.now(UTC) + timedelta(hours=24)
+    mock_session.game_name = "Ark Nova"
+    mock_session.persona = None
+    mock_session.system_prompt_override = None
+    mock_session.active_ruleset_ids = []
+    res_session = MagicMock()
+    res_session.scalar_one_or_none.return_value = mock_session
+
+    res_uploaded = MagicMock()
+    res_uploaded.all.return_value = []
+
+    res_fallback = MagicMock()
+    res_fallback.all.return_value = []
+
+    res_processing = MagicMock()
+    res_processing.scalar_one.return_value = 1
+
+    db_session.execute.side_effect = [
+        res_session,
+        res_uploaded,
+        res_fallback,
+        res_processing,
+    ]
+
+    response = client.post(
+        "/api/v1/judge",
+        json={
+            "query": "Can I release two animals in one action?",
+            "game_name": "Ark Nova",
+            "session_id": "123e4567-e89b-12d3-a456-426614174000",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "still indexing" in response.json()["detail"]
