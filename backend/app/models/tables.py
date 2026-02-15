@@ -51,6 +51,11 @@ class User(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # User preference: default privacy level when saving rulings.
+    # PRIVATE = only me, PARTY = guild members, PUBLIC = tavern board.
+    default_ruling_privacy: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="PRIVATE"
+    )
 
     # Legacy/Existing fields (could migrate to Subscription table, but keeping for now if used by existing code)
     # tier: Mapped[str] = mapped_column(String, nullable=False, default="FREE")

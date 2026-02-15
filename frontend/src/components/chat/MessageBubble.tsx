@@ -14,6 +14,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { motion } from "framer-motion";
+import useSWR from "swr";
 import { api } from "@/lib/api";
 
 interface MessageBubbleProps {
@@ -53,17 +54,23 @@ export function MessageBubble({ message, gameName, sessionId, onCitationClick, o
   const { verdict } = message;
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
-  const handleSaveRuling = async () => {
+  // Fetch profile for default ruling privacy — SWR caches across all bubbles
+  const { data: profile } = useSWR("profile", api.getProfile, { onError: () => {} });
+  const userDefault = (profile?.default_ruling_privacy || "PRIVATE") as "PRIVATE" | "PARTY" | "PUBLIC";
+
+  const handleSaveRuling = async (privacy: "PRIVATE" | "PARTY" | "PUBLIC") => {
     if (!verdict || saved || saving) return;
     setSaving(true);
+    setPrivacyOpen(false);
     try {
       await api.saveRuling({
         query: message.content,
         verdict_json: verdict,
         game_name: gameName,
         session_id: sessionId,
-        privacy_level: "PRIVATE",
+        privacy_level: privacy,
       });
       setSaved(true);
     } catch {
@@ -72,6 +79,12 @@ export function MessageBubble({ message, gameName, sessionId, onCitationClick, o
       setSaving(false);
     }
   };
+
+  const privacyOptions = [
+    { value: "PRIVATE" as const, icon: "🔒", label: "Private" },
+    { value: "PARTY" as const, icon: "👥", label: "Party" },
+    { value: "PUBLIC" as const, icon: "🌐", label: "Public" },
+  ];
 
   return (
     <motion.div
@@ -116,23 +129,48 @@ export function MessageBubble({ message, gameName, sessionId, onCitationClick, o
                    {verdict.model}
                  </Badge>
                )}
-               {/* Save Ruling Button */}
-               <Button
-                 variant="ghost"
-                 size="sm"
-                 className={cn(
-                   "h-6 px-2 text-xs gap-1 ml-auto",
-                   saved ? "text-green-400" : "text-muted-foreground hover:text-primary"
-                 )}
-                 onClick={handleSaveRuling}
-                 disabled={saving || saved}
-               >
+               {/* Save Ruling Button with Privacy Dropdown */}
+               <div className="relative ml-auto">
                  {saved ? (
-                   <><Check className="h-3 w-3" /> Saved</>
+                   <Button
+                     variant="ghost"
+                     size="sm"
+                     className="h-6 px-2 text-xs gap-1 text-green-400"
+                     disabled
+                   >
+                     <Check className="h-3 w-3" /> Saved
+                   </Button>
                  ) : (
-                   <><Bookmark className="h-3 w-3" /> Save</>
+                   <>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       className="h-6 px-2 text-xs gap-1 text-muted-foreground hover:text-primary"
+                       onClick={() => setPrivacyOpen(!privacyOpen)}
+                       disabled={saving}
+                     >
+                       <Bookmark className="h-3 w-3" /> Save
+                     </Button>
+                     {privacyOpen && (
+                       <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-xl p-1 min-w-[140px]">
+                         {privacyOptions.map((opt) => (
+                           <button
+                             key={opt.value}
+                             className={cn(
+                               "w-full flex items-center gap-2 px-3 py-1.5 text-xs rounded-md hover:bg-muted transition-colors text-left",
+                               opt.value === userDefault && "bg-muted/50 font-medium"
+                             )}
+                             onClick={() => handleSaveRuling(opt.value)}
+                           >
+                             <span>{opt.icon}</span>
+                             <span>{opt.label}{opt.value === userDefault ? " ★" : ""}</span>
+                           </button>
+                         ))}
+                       </div>
+                     )}
+                   </>
                  )}
-               </Button>
+               </div>
             </div>
           )}
 

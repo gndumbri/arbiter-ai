@@ -18,10 +18,10 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Your Shelf</h2>
-          <p className="text-muted-foreground">Your uploaded rulebooks, ready for battle.</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Your Shelf</h2>
+          <p className="text-muted-foreground text-sm sm:text-base">Your uploaded rulebooks, ready for battle.</p>
         </div>
         <RulesetUploadDialog />
       </div>

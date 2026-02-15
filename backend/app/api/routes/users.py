@@ -41,9 +41,11 @@ class UpdateProfileRequest(BaseModel):
 
     Fields:
         name: New display name for the user. Optional — omit to leave unchanged.
+        default_ruling_privacy: Default privacy when saving rulings (PRIVATE/PARTY/PUBLIC).
     """
 
     name: str | None = None
+    default_ruling_privacy: str | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -56,6 +58,7 @@ class ProfileResponse(BaseModel):
     email: str
     name: str | None
     role: str
+    default_ruling_privacy: str
 
 
 # ─── Get My Profile ──────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ async def get_my_profile(user: CurrentUser, db: DbSession) -> ProfileResponse:
         email=user_record.email,
         name=user_record.name,
         role=user_record.role or "USER",
+        default_ruling_privacy=user_record.default_ruling_privacy or "PRIVATE",
     )
 
 
@@ -110,7 +114,7 @@ async def update_profile(body: UpdateProfileRequest, user: CurrentUser, db: DbSe
     Raises:
         HTTPException: 400 if no fields provided, 404 if user not found.
     """
-    if body.name is None:
+    if body.name is None and body.default_ruling_privacy is None:
         raise HTTPException(status_code=400, detail="No updateable fields provided.")
 
     result = await db.execute(select(User).where(User.id == user["id"]))
@@ -121,6 +125,10 @@ async def update_profile(body: UpdateProfileRequest, user: CurrentUser, db: DbSe
 
     if body.name is not None:
         user_record.name = body.name
+    if body.default_ruling_privacy is not None:
+        if body.default_ruling_privacy not in ("PRIVATE", "PARTY", "PUBLIC"):
+            raise HTTPException(status_code=400, detail="Invalid privacy level")
+        user_record.default_ruling_privacy = body.default_ruling_privacy
 
     await db.commit()
     await db.refresh(user_record)
@@ -132,6 +140,7 @@ async def update_profile(body: UpdateProfileRequest, user: CurrentUser, db: DbSe
         email=user_record.email,
         name=user_record.name,
         role=user_record.role or "USER",
+        default_ruling_privacy=user_record.default_ruling_privacy or "PRIVATE",
     )
 
 

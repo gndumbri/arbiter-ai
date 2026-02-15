@@ -12,12 +12,16 @@ from __future__ import annotations
 
 import uuid
 
+import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
-from app.models.tables import SavedRuling
+from app.config import get_settings
+from app.models.tables import PartyMember, SavedRuling
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/v1/rulings", tags=["rulings"])
 
@@ -200,6 +204,64 @@ async def list_public_rulings(db: DbSession) -> list[SavedRulingResponse]:
     return [_ruling_to_response(r) for r in result.scalars().all()]
 
 
+# ─── Party Rulings ──────────────────────────────────────────────────────────
+
+
+@router.get("/party", response_model=list[SavedRulingResponse])
+async def list_party_rulings(
+    user: CurrentUser,
+    db: DbSession,
+    game_name: str | None = Query(None, description="Filter by game name"),
+) -> list[SavedRulingResponse]:
+    """List PARTY-level rulings from all party members.
+
+    WHY: When a user shares a ruling with their party (privacy_level=PARTY),
+    all members of any shared party can see it. This enables collaborative
+    rule-keeping during game night.
+
+    Auth: JWT required.
+    Returns: Up to 100 PARTY rulings from co-party members.
+    """
+    # Step 1: Find all party IDs the current user belongs to
+    party_ids_stmt = (
+        select(PartyMember.party_id)
+        .where(PartyMember.user_id == user["id"])
+        .where(PartyMember.status == "ACCEPTED")
+    )
+    party_ids_result = await db.execute(party_ids_stmt)
+    party_ids = [row[0] for row in party_ids_result.all()]
+
+    if not party_ids:
+        return []
+
+    # Step 2: Find all user IDs in those parties (excluding self)
+    co_member_stmt = (
+        select(PartyMember.user_id)
+        .where(PartyMember.party_id.in_(party_ids))
+        .where(PartyMember.user_id != user["id"])
+        .where(PartyMember.status == "ACCEPTED")
+    )
+    co_member_result = await db.execute(co_member_stmt)
+    co_member_ids = list({row[0] for row in co_member_result.all()})
+
+    if not co_member_ids:
+        return []
+
+    # Step 3: Get PARTY rulings from those co-members
+    stmt = (
+        select(SavedRuling)
+        .where(SavedRuling.user_id.in_(co_member_ids))
+        .where(SavedRuling.privacy_level == "PARTY")
+        .order_by(SavedRuling.created_at.desc())
+        .limit(100)
+    )
+    if game_name:
+        stmt = stmt.where(SavedRuling.game_name == game_name)
+
+    result = await db.execute(stmt)
+    return [_ruling_to_response(r) for r in result.scalars().all()]
+
+
 # ─── Update Ruling ────────────────────────────────────────────────────────────
 
 
@@ -267,3 +329,53 @@ async def delete_ruling(
 
     await db.delete(ruling)
     await db.commit()
+
+
+# ─── Cache Lookup (Crowdsource Stub) ─────────────────────────────────────────
+
+
+@router.get("/cache-lookup")
+async def cache_lookup(
+    db: DbSession,
+    query: str = Query(..., description="The question to search for"),
+    game_name: str | None = Query(None, description="Filter by game"),
+) -> dict:
+    """Search public rulings for a matching question.
+
+    WHY: As the community grows, many questions will be repeats.
+    This endpoint checks if a high-quality public ruling already exists
+    for a given question, potentially saving an LLM call.
+
+    Auth: None (cache is public by nature).
+    Feature flag: USE_RULING_CACHE (off by default).
+
+    Returns:
+        {"hit": true, "ruling": {...}} if found, {"hit": false} if not.
+    """
+    settings = get_settings()
+    if not settings.use_ruling_cache:
+        return {"hit": False, "reason": "Cache disabled (USE_RULING_CACHE=false)"}
+
+    # Simple case-insensitive substring match for now.
+    # WHY: At low volume, exact/substring match is sufficient.
+    # Future: Use embedding similarity for semantic matching.
+    normalized_query = query.strip().lower()
+
+    stmt = (
+        select(SavedRuling)
+        .where(SavedRuling.privacy_level == "PUBLIC")
+        .where(func.lower(SavedRuling.query).contains(normalized_query))
+        .order_by(SavedRuling.created_at.desc())
+        .limit(1)
+    )
+    if game_name:
+        stmt = stmt.where(SavedRuling.game_name == game_name)
+
+    result = await db.execute(stmt)
+    ruling = result.scalar_one_or_none()
+
+    if ruling:
+        logger.info("Cache hit: query=%s game=%s", query[:50], game_name)
+        return {"hit": True, "ruling": _ruling_to_response(ruling).model_dump()}
+
+    return {"hit": False}
