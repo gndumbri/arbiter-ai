@@ -213,6 +213,10 @@ class OfficialRuleset(Base):
     )
     game_name: Mapped[str] = mapped_column(String, nullable=False)
     game_slug: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    publisher_display_name: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None,
+        comment="Actual game publisher (e.g. 'Wizards of the Coast'). Falls back to Publisher.name if null.",
+    )
     source_type: Mapped[str] = mapped_column(String, nullable=False, default="BASE")
     source_priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     version: Mapped[str] = mapped_column(String, nullable=False, default="1.0")
@@ -294,6 +298,9 @@ class PartyMember(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     role: Mapped[str] = mapped_column(String, default="MEMBER")  # OWNER, ADMIN, MEMBER
+    # WHY: Invite acceptance flow — PENDING members have been invited but
+    # haven't accepted yet. Only ACCEPTED members see party content.
+    status: Mapped[str] = mapped_column(String, default="ACCEPTED")  # PENDING, ACCEPTED
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -311,6 +318,15 @@ class SavedRuling(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    # WHY: game_name enables "show me all Catan rulings" and game-based grouping.
+    # Nullable for backward compat with existing rulings that lack this field.
+    game_name: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
+    # WHY: session_id links a ruling back to its source session for context.
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     query: Mapped[str] = mapped_column(Text, nullable=False)
     verdict_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     privacy_level: Mapped[str] = mapped_column(String, default="PRIVATE")  # PRIVATE, PARTY, PUBLIC
@@ -320,6 +336,28 @@ class SavedRuling(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="saved_rulings")
+
+
+class PartyGameShare(Base):
+    """Controls which games' rulings a user shares with a party.
+
+    WHY: Each party member chooses which games are visible to the group.
+    If user U shares game "Catan" with party P, then all of U's PARTY-level
+    Catan rulings are visible to P's members.
+    """
+    __tablename__ = "party_game_shares"
+
+    party_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("parties.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    # WHY: Primary key includes game_name so a user can share multiple games.
+    game_name: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class UserGameLibrary(Base):

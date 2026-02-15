@@ -1,17 +1,12 @@
 /**
- * CatalogPage — Browse official game rulesets and add games to your library.
+ * CatalogPage — Browse the full game catalog and add games to your library.
  *
- * Displays a searchable grid of games from the backend catalog merged with
- * common pre-seeded games. Each card has an "Add to Library" button that
- * calls POST /api/v1/library via api.ts.
+ * The primary data source is GET /api/v1/catalog, which returns all 130+
+ * games seeded into the database by scripts/seed_catalog.py. A small
+ * FALLBACK_GAMES list is only shown when the backend is unreachable.
  *
  * Called by: Dashboard layout sidebar "Catalog" link.
- * Depends on: api.ts (listCatalog, addToLibrary), CatalogEntry/LibraryEntry types.
- *
- * Architecture note for AI agents:
- *   The COMMON_GAMES array provides fallback games when the backend
- *   catalog is empty or unavailable. These use `common-*` IDs and are
- *   merged with backend entries, deduplicating by game_slug.
+ * Depends on: api.ts (listCatalog, listLibrary, addToLibrary).
  */
 
 "use client";
@@ -28,24 +23,17 @@ import { useToast } from "@/hooks/use-toast";
 import { api, CatalogEntry, LibraryEntry } from "@/lib/api";
 
 /**
- * Common games that are always visible in the catalog even when
- * the backend catalog table is empty. These provide a good default
- * experience for new users. IDs use the `common-*` prefix to
- * distinguish them from real database entries.
+ * Fallback games shown only when the backend catalog is unavailable.
+ * Slugs match the DB seed exactly so deduplication works correctly.
+ * The real catalog lives in the database (see scripts/seed_catalog.py).
  */
-const COMMON_GAMES: CatalogEntry[] = [
-  { id: "common-dnd5e", game_name: "Dungeons & Dragons 5th Edition", game_slug: "dnd-5e", publisher_name: "Wizards of the Coast", version: "2024", status: "READY" },
-  { id: "common-pathfinder2e", game_name: "Pathfinder 2nd Edition", game_slug: "pathfinder-2e", publisher_name: "Paizo", version: "2023", status: "READY" },
-  { id: "common-mtg", game_name: "Magic: The Gathering", game_slug: "mtg", publisher_name: "Wizards of the Coast", version: "2024", status: "READY" },
-  { id: "common-catan", game_name: "Catan", game_slug: "catan", publisher_name: "Catan Studio", version: "6th Ed", status: "READY" },
-  { id: "common-warhammer40k", game_name: "Warhammer 40,000", game_slug: "warhammer-40k", publisher_name: "Games Workshop", version: "10th Ed", status: "READY" },
-  { id: "common-ticket-to-ride", game_name: "Ticket to Ride", game_slug: "ticket-to-ride", publisher_name: "Days of Wonder", version: "2024", status: "READY" },
-  { id: "common-wingspan", game_name: "Wingspan", game_slug: "wingspan", publisher_name: "Stonemaier Games", version: "2nd Print", status: "READY" },
-  { id: "common-gloomhaven", game_name: "Gloomhaven", game_slug: "gloomhaven", publisher_name: "Cephalofair Games", version: "2nd Ed", status: "READY" },
-  { id: "common-spirit-island", game_name: "Spirit Island", game_slug: "spirit-island", publisher_name: "Greater Than Games", version: "2022", status: "READY" },
-  { id: "common-scythe", game_name: "Scythe", game_slug: "scythe", publisher_name: "Stonemaier Games", version: "2020", status: "READY" },
-  { id: "common-7wonders", game_name: "7 Wonders", game_slug: "7-wonders", publisher_name: "Repos Production", version: "2nd Ed", status: "READY" },
-  { id: "common-pandemic", game_name: "Pandemic", game_slug: "pandemic", publisher_name: "Z-Man Games", version: "2020", status: "READY" },
+const FALLBACK_GAMES: CatalogEntry[] = [
+  { id: "common-dnd5e",       game_name: "Dungeons & Dragons 5th Edition", game_slug: "dnd-5e",           publisher_name: "Wizards of the Coast", version: "2024",   status: "UPLOAD_REQUIRED" },
+  { id: "common-pathfinder2e", game_name: "Pathfinder 2nd Edition",        game_slug: "pathfinder-2e",     publisher_name: "Paizo",                version: "Remaster", status: "UPLOAD_REQUIRED" },
+  { id: "common-mtg",         game_name: "Magic: The Gathering",           game_slug: "mtg",               publisher_name: "Wizards of the Coast", version: "2024",   status: "UPLOAD_REQUIRED" },
+  { id: "common-catan",       game_name: "Catan (6th Ed)",                 game_slug: "catan-6e",          publisher_name: "Catan Studio",         version: "6th Ed", status: "UPLOAD_REQUIRED" },
+  { id: "common-warhammer40k",game_name: "Warhammer 40,000 (10th Ed)",     game_slug: "warhammer-40k-10",  publisher_name: "Games Workshop",       version: "10th Ed", status: "UPLOAD_REQUIRED" },
+  { id: "common-pandemic",    game_name: "Pandemic",                       game_slug: "pandemic",          publisher_name: "Z-Man Games",          version: "2020",   status: "UPLOAD_REQUIRED" },
 ];
 
 export default function CatalogPage() {
@@ -73,15 +61,10 @@ export default function CatalogPage() {
     }
   }
 
-  // Merge backend catalog with common games (dedup by slug)
-  const allGames = [...COMMON_GAMES];
-  if (backendCatalog) {
-    for (const entry of backendCatalog) {
-      if (!allGames.find((g) => g.game_slug === entry.game_slug)) {
-        allGames.push(entry);
-      }
-    }
-  }
+  // Backend catalog is the source of truth; fallbacks fill in only when backend is down
+  const allGames: CatalogEntry[] = backendCatalog && backendCatalog.length > 0
+    ? backendCatalog
+    : FALLBACK_GAMES;
 
   const filtered = allGames.filter(
     (g) =>

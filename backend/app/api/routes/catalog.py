@@ -96,7 +96,7 @@ async def list_verified_games(
             id=r.id,
             game_name=r.game_name,
             game_slug=r.game_slug,
-            publisher_name=r.publisher.name if r.publisher else "Unknown",
+            publisher_name=r.publisher_display_name or (r.publisher.name if r.publisher else "Unknown"),
             version=r.version,
             status=r.status,
         )
