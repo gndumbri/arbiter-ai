@@ -84,32 +84,32 @@ export default function NewAgentPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Create Agent</h2>
-          <p className="text-muted-foreground">Configure a new AI agent with custom behaviors and knowledge.</p>
+          <h2 className="text-3xl font-bold tracking-tight">Recruit an NPC</h2>
+          <p className="text-muted-foreground">Configure a custom AI persona with specific knowledge and behavior.</p>
         </div>
       </div>
 
       <div className="flex items-center justify-center space-x-4">
-        <StepIndicator number={1} title="Identity" current={step === 1} completed={step > 1} />
+        <StepIndicator number={1} title="Who Are They?" current={step === 1} completed={step > 1} />
         <div className="w-16 h-px bg-border" />
-        <StepIndicator number={2} title="Knowledge" current={step === 2} completed={step > 2} />
+        <StepIndicator number={2} title="What They Know" current={step === 2} completed={step > 2} />
         <div className="w-16 h-px bg-border" />
-        <StepIndicator number={3} title="Review" current={step === 3} completed={step > 3} />
+        <StepIndicator number={3} title="Ready Check" current={step === 3} completed={step > 3} />
       </div>
 
       <Card>
         {step === 1 && (
           <>
             <CardHeader>
-              <CardTitle>Agent Identity</CardTitle>
-              <CardDescription>Define how your agent should behave and interact.</CardDescription>
+              <CardTitle>NPC Identity</CardTitle>
+              <CardDescription>Define who your NPC is and how they behave.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Agent Name</Label>
+                <Label htmlFor="name">NPC Name</Label>
                 <Input
                   id="name"
-                  placeholder="e.g. Dungeon Master, Rule Lawyer"
+                  placeholder="e.g. Gandalf the Rules Nerd"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -165,7 +165,7 @@ export default function NewAgentPage() {
               <div className="text-center space-y-2">
                  <Bot className="h-12 w-12 mx-auto text-primary/20" />
                  <p className="text-sm text-muted-foreground">
-                   Your agent <strong>{formData.name}</strong> is created. Now give it brains.
+                   Your NPC <strong>{formData.name}</strong> is created. Now give them forbidden knowledge.
                  </p>
               </div>
               
@@ -205,8 +205,8 @@ export default function NewAgentPage() {
         {step === 3 && (
           <>
             <CardHeader>
-              <CardTitle>Agent Ready!</CardTitle>
-              <CardDescription>Your agent has been created successfully.</CardDescription>
+              <CardTitle>NPC Recruited!</CardTitle>
+              <CardDescription>Your NPC has been created successfully.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center space-y-4 py-8">
               <div className="rounded-full bg-green-500/15 p-3">
@@ -219,7 +219,7 @@ export default function NewAgentPage() {
               {uploadFile && <p className="text-xs text-muted-foreground text-center">Includes knowledge from: {uploadFile.name}</p>}
             </CardContent>
             <CardFooter className="flex justify-center">
-               <Button onClick={handleFinish} className="w-full sm:w-auto">Go to My Agents</Button>
+               <Button onClick={handleFinish} className="w-full sm:w-auto">Go to My NPCs</Button>
             </CardFooter>
           </>
         )}

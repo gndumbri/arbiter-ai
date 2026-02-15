@@ -14,11 +14,11 @@ export default function DashboardLayout({
   const pathname = usePathname();
 
   const navItems = [
-    { href: "/dashboard", label: "Library" },
-    { href: "/dashboard/catalog", label: "Catalog" },
-    { href: "/dashboard/rulings", label: "Rulings" },
-    { href: "/dashboard/parties", label: "Parties" },
-    { href: "/dashboard/agents", label: "Agents" },
+    { href: "/dashboard", label: "Shelf" },
+    { href: "/dashboard/catalog", label: "Armory" },
+    { href: "/dashboard/rulings", label: "Scrolls" },
+    { href: "/dashboard/parties", label: "Guild" },
+    { href: "/dashboard/agents", label: "NPCs" },
   ];
 
   return (
