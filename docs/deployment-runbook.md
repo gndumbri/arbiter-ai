@@ -31,7 +31,7 @@ arbiter-ai/sandbox    ← for sandbox
 arbiter-ai/production ← for production
 ```
 
-Each secret should be a **JSON object** with these keys:
+Each backend secret should be a **JSON object** with these required keys:
 
 ```json
 {
@@ -40,10 +40,18 @@ Each secret should be a **JSON object** with these keys:
   "NEXTAUTH_SECRET": "<generate with: openssl rand -base64 32>",
   "STRIPE_SECRET_KEY": "sk_test_... (sandbox) or sk_live_... (prod)",
   "STRIPE_WEBHOOK_SECRET": "whsec_...",
-  "STRIPE_PRICE_ID": "price_...",
-  "BREVO_API_KEY": "xkeysib-... (for magic-link sign-in emails)"
+  "STRIPE_PRICE_ID": "price_..."
 }
 ```
+
+Optional (provider-dependent) keys:
+
+- `OPENAI_API_KEY` when `LLM_PROVIDER=openai` and/or `EMBEDDING_PROVIDER=openai`
+- `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
+
+> [!IMPORTANT]
+> ECS/Fargate does not read your local `.env` files after commit. Runtime config comes only from task-definition `environment` + `secrets` injection.
+> If a key is referenced in `containerDefinitions[].secrets`, that JSON key must exist in Secrets Manager (empty string is allowed for sandbox optional keys like `BREVO_API_KEY`).
 
 ### How to generate them
 
@@ -66,8 +74,7 @@ aws secretsmanager create-secret \
     "NEXTAUTH_SECRET": "<paste generated value>",
     "STRIPE_SECRET_KEY": "sk_test_...",
     "STRIPE_WEBHOOK_SECRET": "whsec_...",
-    "STRIPE_PRICE_ID": "price_...",
-    "BREVO_API_KEY": "xkeysib-..."
+    "STRIPE_PRICE_ID": "price_..."
   }' \
   --region us-east-1
 ```
@@ -226,11 +233,12 @@ The frontend needs these env vars set in the hosting platform dashboard:
 
 | Variable          | Sandbox                           | Production                        |
 | ----------------- | --------------------------------- | --------------------------------- |
+| `APP_MODE`        | `sandbox`                         | `production`                      |
 | `AUTH_SECRET`     | Same as backend `NEXTAUTH_SECRET` | Same as backend `NEXTAUTH_SECRET` |
 | `AUTH_TRUST_HOST` | `true`                            | `true`                            |
 | `NEXTAUTH_URL`    | `https://sandbox.arbiter-ai.com`  | `https://arbiter-ai.com`          |
 | `DATABASE_URL`    | RDS connection string (non-async) | RDS connection string (non-async) |
-| `BREVO_API_KEY`   | Your Brevo key                    | Your Brevo key                    |
+| `BREVO_API_KEY`   | Optional (console fallback)       | Required                          |
 | `EMAIL_FROM`      | `noreply@arbiter-ai.com`          | `noreply@arbiter-ai.com`          |
 
 > [!WARNING]
@@ -238,11 +246,65 @@ The frontend needs these env vars set in the hosting platform dashboard:
 
 ---
 
-## Step 6: Pre-Flight Checklist
+## Step 6: Deployment Preflight Gate
+
+Before any promotion, run the backend preflight checks:
+
+```bash
+# Sandbox / staging
+make preflight-sandbox
+
+# Production
+APP_MODE=production APP_ENV=production make preflight-production
+```
+
+The preflight command validates:
+
+- Environment mode + required keys
+- Postgres connectivity (`SELECT 1`)
+- Redis connectivity (`PING`)
+- Provider stack initialization (LLM/embedder/vector/reranker/parser)
+- Live Bedrock probes (embedding in sandbox; embedding + LLM in production)
+
+> [!NOTE]
+> Production preflight uses `--probe-llm`, so it incurs normal model usage cost. Keep it enabled for release gates.
+
+---
+
+## Step 7: CI/CD Gate (Required)
+
+Use `.github/workflows/deploy.yml` as the deployment entrypoint. It blocks deploy unless the ECS preflight task exits `0`.
+
+Set these GitHub repository values:
+
+- `vars.AWS_REGION`
+- `vars.ECS_CLUSTER`
+- `vars.ECS_SUBNETS` (comma-separated subnet IDs)
+- `vars.ECS_SECURITY_GROUPS` (comma-separated security group IDs)
+- `vars.ECS_BACKEND_TASKDEF_SANDBOX`
+- `vars.ECS_BACKEND_TASKDEF_PRODUCTION`
+- `vars.ECS_BACKEND_SERVICE_SANDBOX`
+- `vars.ECS_BACKEND_SERVICE_PRODUCTION`
+- `vars.ECS_BACKEND_CONTAINER_NAME` (optional, defaults to `backend`)
+- `vars.ECS_ASSIGN_PUBLIC_IP` (optional: `ENABLED` or `DISABLED`)
+
+Set this GitHub secret:
+
+- `secrets.AWS_DEPLOY_ROLE_ARN` (OIDC-assumable role for ECS deploy + run-task)
+
+Trigger the workflow manually:
+
+```text
+Actions → Deploy ECS → Run workflow
+```
+
+---
+
+## Step 8: Pre-Flight Checklist
 
 Before you go live, verify:
 
-- [ ] **Secrets Manager** has all 7 keys populated for the target environment
+- [ ] **Secrets Manager** has all 6 required backend keys populated for the target environment
 - [ ] **ECS execution role** can read from `arbiter-ai/*` in Secrets Manager
 - [ ] **ECS task role** has Bedrock `InvokeModel` permission
 - [ ] **RDS** is accessible from the ECS security group (port 5432)
@@ -252,6 +314,8 @@ Before you go live, verify:
 - [ ] **`NEXTAUTH_SECRET`** matches between backend secret and frontend env
 - [ ] **Stripe webhook** is pointed at `https://<domain>/api/v1/billing/webhooks/stripe`
 - [ ] **Brevo sender domain** is verified (or using a verified sender email)
+- [ ] **Preflight gate passes** (`make preflight-sandbox` / `make preflight-production`)
+- [ ] **GitHub deploy workflow preflight job passes** before ECS service update
 - [ ] **Health check** passes: `curl https://<domain>/health`
 
 ---
@@ -263,7 +327,7 @@ Before you go live, verify:
 │ Secrets Manager (arbiter-ai/{env})                      │
 │  DATABASE_URL, REDIS_URL, NEXTAUTH_SECRET,              │
 │  STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,              │
-│  STRIPE_PRICE_ID, BREVO_API_KEY                         │
+│  STRIPE_PRICE_ID                                        │
 └─────────────────────────────┬───────────────────────────┘
                               │ pulled at container start
 ┌─────────────────────────────▼───────────────────────────┐
