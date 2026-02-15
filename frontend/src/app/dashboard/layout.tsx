@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { Shield, Settings } from "lucide-react";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,7 @@ export default function DashboardLayout({
     { href: "/dashboard/rulings", label: "Scrolls" },
     { href: "/dashboard/parties", label: "Guild" },
     { href: "/dashboard/agents", label: "NPCs" },
+    { href: "/dashboard/settings", label: "Settings" },
   ];
 
   return (
@@ -27,18 +28,18 @@ export default function DashboardLayout({
         <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
           <Link
             href="/dashboard"
-            className="flex items-center space-x-2 font-bold text-primary hover:text-primary/80 transition-colors"
+            className="flex items-center space-x-2 font-bold text-primary hover:text-primary/80 transition-colors shrink-0"
           >
             <Shield className="h-5 w-5" />
             <span className="hidden sm:inline-block">Arbiter AI</span>
           </Link>
-          <nav className="flex items-center space-x-1 ml-6">
+          <nav className="flex items-center space-x-1 ml-4 sm:ml-6 overflow-x-auto scrollbar-hide">
             {navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                  "px-2 sm:px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap shrink-0",
                   pathname === item.href
                     ? "text-foreground bg-muted"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
