@@ -36,5 +36,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-# Run with uvicorn — workers configurable via $WEB_CONCURRENCY
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# WHY: Run Alembic migrations before starting the server so the database
+# schema is always up to date on deploy (same pattern as Django's migrate).
+# Safe with a single task; if scaling to multiple tasks, move migrations
+# to a dedicated one-off ECS task in the CI/CD pipeline instead.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
