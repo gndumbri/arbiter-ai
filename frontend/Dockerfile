@@ -1,15 +1,15 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-# WHY: --legacy-peer-deps is needed because Next.js 16 / React 19 has
-# peer dependency conflicts with older packages (e.g. @auth/core).
-RUN npm install --legacy-peer-deps
+COPY package.json package-lock.json* .npmrc ./
+# WHY: .npmrc sets legacy-peer-deps=true, so npm ci respects it
+# without needing a CLI flag. npm ci gives deterministic builds from the lockfile.
+RUN npm ci
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 
 WORKDIR /app
 
