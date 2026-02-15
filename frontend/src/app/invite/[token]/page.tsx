@@ -88,12 +88,12 @@ export default function InvitePage({
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                 <Shield className="h-8 w-8 text-primary" />
               </div>
-              <CardTitle className="text-xl">Sign in to join</CardTitle>
+              <CardTitle className="text-xl">Identify Yourself</CardTitle>
             </CardHeader>
             <CardContent className="text-center space-y-4">
               <p className="text-muted-foreground text-sm">
-                You&apos;ve been invited to join <strong>{partyName}</strong>.
-                Sign in first to accept the invitation.
+                You&apos;ve been summoned to join <strong>{partyName}</strong>.
+                Sign in first to answer the summons.
               </p>
               <Button
                 className="w-full gap-2"
@@ -128,9 +128,9 @@ export default function InvitePage({
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
                 <Check className="h-8 w-8 text-green-400" />
               </div>
-              <h2 className="text-xl font-bold">You&apos;re in!</h2>
+              <h2 className="text-xl font-bold">Welcome to the guild!</h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Welcome to <strong>{partyName}</strong>. Redirecting...
+                You&apos;ve joined <strong>{partyName}</strong>. Redirecting...
               </p>
             </CardContent>
           </Card>
@@ -151,11 +151,11 @@ export default function InvitePage({
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
               <Users className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-xl">Party Invitation</CardTitle>
+            <CardTitle className="text-xl">Guild Summons</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <p className="text-center text-muted-foreground text-sm">
-              You&apos;ve been invited to join{" "}
+              You&apos;ve been summoned to join{" "}
               <strong className="text-foreground">{partyName}</strong>.
             </p>
 
@@ -185,7 +185,7 @@ export default function InvitePage({
                 ) : (
                   <Check className="h-4 w-4" />
                 )}
-                {joining ? "Joining..." : "Accept"}
+                {joining ? "Joining..." : "Join the Quest"}
               </Button>
             </div>
           </CardContent>

@@ -1,6 +1,6 @@
 # Arbiter AI — Technical Specification (SPEC)
 
-**Version:** 1.0 · **Status:** Active · **Last Updated:** 2026-02-14
+**Version:** 1.1 · **Status:** Active · **Last Updated:** 2026-02-15
 
 ---
 
@@ -15,8 +15,8 @@
 | **Database**    | PostgreSQL                     | 16        | Relational data, user accounts                      |
 | **ORM**         | SQLAlchemy                     | 2.0+      | Database models and queries                         |
 | **Migrations**  | Alembic                        | 1.13+     | Schema versioning                                   |
-| **Vector DB**   | Pinecone Serverless            | —         | Semantic search, per-tenant namespaces              |
-| **Embedding**   | OpenAI / AWS Bedrock Titan v2  | —         | 1536-dim embeddings (provider-swappable)            |
+| **Vector DB**   | pgvector (PostgreSQL)          | 0.7+      | Semantic search via `rule_chunks` table             |
+| **Embedding**   | OpenAI / AWS Bedrock Titan v2  | —         | 1024-dim embeddings (provider-swappable)            |
 | **LLM**         | OpenAI GPT-4o / Bedrock Claude | —         | Query expansion, verdict generation, classification |
 | **Reranker**    | Cohere Rerank v3 / FlashRank   | —         | Cross-encoder scoring (API or local)                |
 | **PDF Parsing** | Docling / Unstructured         | —         | Layout-aware PDF extraction                         |
@@ -31,18 +31,18 @@
 ```
 ┌─────────────────────────────────────────────────────┐
 │  Frontend (Next.js on Vercel)                       │
-│  - SSR pages, PWA shell, Supabase Auth client       │
+│  - SSR pages, PWA shell, NextAuth client            │
 └──────────────────────┬──────────────────────────────┘
                        │ HTTPS
 ┌──────────────────────▼──────────────────────────────┐
 │  API Server (FastAPI on Fargate)                    │
 │  - REST endpoints, JWT validation, rate limiting    │
-│  - Writes to Postgres, reads from Pinecone          │
+│  - Writes to Postgres (+ pgvector for embeddings)   │
 │  - Enqueues jobs to Redis                           │
-└──────┬──────────┬──────────────┬────────────────────┘
-       │          │              │
-   Postgres    Redis         Pinecone
+└──────┬──────────┬───────────────────────────────────┘
        │          │
+   Postgres    Redis
+   (+ pgvector)   │
        │    ┌─────▼─────────────────────────────┐
        │    │  Celery Worker (isolated container) │
        │    │  - PDF ingestion pipeline           │
@@ -60,14 +60,14 @@
 All user-generated data scoped by `user_id`. Publisher data scoped by `publisher_id`.
 
 ```sql
--- Users
+-- Users (NextAuth-compatible + RBAC)
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT,                                   -- Display name (NextAuth)
     email TEXT UNIQUE NOT NULL,
-    tier TEXT NOT NULL DEFAULT 'FREE' CHECK (tier IN ('FREE', 'PRO')),
-    stripe_customer_id TEXT,
-    stripe_subscription_id TEXT,
-    tier_updated_at TIMESTAMPTZ,
+    email_verified TIMESTAMPTZ,                  -- NextAuth email verification
+    image TEXT,                                  -- Avatar URL (NextAuth)
+    role TEXT NOT NULL DEFAULT 'USER',            -- USER | ADMIN (RBAC)
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -90,11 +90,10 @@ CREATE TABLE ruleset_metadata (
     filename TEXT NOT NULL,
     game_name TEXT NOT NULL,
     file_hash TEXT NOT NULL,
-    source_type TEXT NOT NULL CHECK (source_type IN ('BASE', 'EXPANSION', 'ERRATA')),
+    source_type TEXT NOT NULL DEFAULT 'BASE',     -- BASE, EXPANSION, ERRATA
     source_priority INT NOT NULL DEFAULT 0,
     chunk_count INT DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'PROCESSING'
-           CHECK (status IN ('PROCESSING', 'INDEXED', 'FAILED', 'EXPIRED')),
+    status TEXT NOT NULL DEFAULT 'PROCESSING',    -- PROCESSING, INDEXED, FAILED, EXPIRED
     error_message TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -110,19 +109,24 @@ CREATE TABLE publishers (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Official rulesets
+-- Official rulesets (+ Hybrid Catalog provenance)
 CREATE TABLE official_rulesets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     publisher_id UUID REFERENCES publishers(id) ON DELETE CASCADE,
     game_name TEXT NOT NULL,
     game_slug TEXT NOT NULL,
-    source_type TEXT NOT NULL CHECK (source_type IN ('BASE', 'EXPANSION', 'ERRATA')),
+    publisher_display_name TEXT,                  -- Actual publisher (e.g. 'Wizards of the Coast')
+    source_type TEXT NOT NULL DEFAULT 'BASE',     -- BASE, EXPANSION, ERRATA
     source_priority INT NOT NULL DEFAULT 0,
     version TEXT NOT NULL DEFAULT '1.0',
     chunk_count INT DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'PROCESSING'
-           CHECK (status IN ('PROCESSING', 'INDEXED', 'FAILED')),
+    status TEXT NOT NULL DEFAULT 'PROCESSING',    -- PROCESSING, INDEXED, FAILED
     pinecone_namespace TEXT NOT NULL,
+    -- Legal provenance (Hybrid Catalog)
+    license_type TEXT NOT NULL DEFAULT 'PROPRIETARY',  -- CC-BY-4.0, OGL-1.0a, PROPRIETARY
+    source_url TEXT,                             -- URL of open-licensed source
+    attribution_text TEXT,                       -- Required CC/OGL attribution
+    is_crawlable BOOLEAN DEFAULT false,          -- Can we auto-fetch and index?
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -160,7 +164,7 @@ CREATE TABLE query_audit_log (
     confidence_reason TEXT,
     citation_ids TEXT[],
     latency_ms INT,
-    feedback TEXT CHECK (feedback IN ('up', 'down')),
+    feedback TEXT,                               -- 'up' | 'down'
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -187,6 +191,10 @@ CREATE TABLE accounts (
     refresh_token TEXT,
     access_token TEXT,
     expires_at INT,
+    token_type TEXT,                             -- NextAuth adapter field
+    scope TEXT,                                  -- NextAuth adapter field
+    id_token TEXT,                               -- NextAuth adapter field
+    session_state TEXT,                          -- NextAuth adapter field
     UNIQUE(provider, provider_account_id)
 );
 
@@ -207,18 +215,20 @@ CREATE TABLE verification_tokens (
 -- Subscriptions & Billing
 CREATE TABLE subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    stripe_subscription_id TEXT,
-    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    stripe_customer_id TEXT UNIQUE NOT NULL,      -- Stripe Customer ID
+    stripe_subscription_id TEXT UNIQUE,           -- Stripe Subscription ID
+    plan_tier TEXT NOT NULL DEFAULT 'FREE',       -- FREE, PRO
+    status TEXT NOT NULL DEFAULT 'active',        -- active, canceled, past_due
     current_period_end TIMESTAMPTZ,
-    plan_tier TEXT NOT NULL DEFAULT 'FREE',
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE subscription_tiers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT UNIQUE NOT NULL,       -- 'FREE', 'PRO'
-    daily_query_limit INT NOT NULL,  -- -1 for unlimited
+    name TEXT UNIQUE NOT NULL,                   -- FREE, PRO
+    daily_query_limit INT NOT NULL DEFAULT 5,    -- -1 for unlimited
+    stripe_product_id TEXT,                      -- Links to Stripe product
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -234,9 +244,19 @@ CREATE TABLE parties (
 CREATE TABLE party_members (
     party_id UUID REFERENCES parties(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    role TEXT DEFAULT 'MEMBER',  -- OWNER, ADMIN, MEMBER
+    role TEXT DEFAULT 'MEMBER',                  -- OWNER, ADMIN, MEMBER
+    status TEXT DEFAULT 'ACCEPTED',              -- PENDING, ACCEPTED (invite flow)
     joined_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (party_id, user_id)
+);
+
+-- Party game sharing (controls which games' rulings a member shares)
+CREATE TABLE party_game_shares (
+    party_id UUID REFERENCES parties(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    game_name TEXT NOT NULL,                     -- Game name shared with party
+    created_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (party_id, user_id, game_name)
 );
 
 CREATE TABLE saved_rulings (
@@ -244,21 +264,39 @@ CREATE TABLE saved_rulings (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     query TEXT NOT NULL,
     verdict_json JSONB NOT NULL,
-    privacy_level TEXT DEFAULT 'PRIVATE',  -- PRIVATE, PARTY, PUBLIC
-    tags JSONB,                             -- ["combat", "magic"]
+    game_name TEXT,                              -- Links ruling to a game for filtering
+    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    privacy_level TEXT DEFAULT 'PRIVATE',        -- PRIVATE, PARTY, PUBLIC
+    tags JSONB,                                  -- ["combat", "magic"]
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Rule Chunks (pgvector — replaces Pinecone)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE rule_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ruleset_id UUID REFERENCES official_rulesets(id) ON DELETE CASCADE,
+    chunk_index INT NOT NULL DEFAULT 0,
+    chunk_text TEXT NOT NULL,
+    section_header TEXT,
+    page_number INT,
+    embedding VECTOR(1024),                      -- Bedrock Titan v2 output dimension
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 ```
 
-### 2.2 Pinecone Configuration
+### 2.2 pgvector Configuration (Replaces Pinecone)
 
-| Setting             | Value                                   |
-| ------------------- | --------------------------------------- |
-| Index name          | `arbiter-rules`                         |
-| Dimensions          | 1536                                    |
-| Metric              | cosine                                  |
-| User namespace      | `user_{user_id}`                        |
-| Publisher namespace | `official_{publisher_slug}_{game_slug}` |
+| Setting          | Value                                      |
+| ---------------- | ------------------------------------------ |
+| Extension        | `pgvector` (via `CREATE EXTENSION vector`) |
+| Dimensions       | 1024 (Bedrock Titan Embed v2)              |
+| Distance metric  | L2 (`<->` operator)                        |
+| Storage          | `rule_chunks.embedding` column in main RDS |
+| Namespace equiv. | `ruleset_id` FK on `rule_chunks`           |
 
 ### 2.3 Redis Keys
 
@@ -280,49 +318,62 @@ CREATE TABLE saved_rulings (
 
 ### 3.2 Endpoint Summary
 
-| Method | Path                                 | Auth      | Description                      |
-| ------ | ------------------------------------ | --------- | -------------------------------- |
-| GET    | `/health`                            | None      | Service health + DB connectivity |
-| POST   | `/api/v1/sessions`                   | JWT       | Create game session              |
-| GET    | `/api/v1/sessions`                   | JWT       | List user sessions               |
-| POST   | `/api/v1/rules/upload`               | JWT       | Upload rulebook PDF              |
-| GET    | `/api/v1/rules/{id}/status`          | JWT       | Poll ingestion status            |
-| POST   | `/api/v1/judge`                      | JWT       | Submit rules question            |
-| POST   | `/api/v1/judge/{id}/feedback`        | JWT       | Submit verdict feedback          |
-| GET    | `/api/v1/library`                    | JWT       | Get user's game library          |
-| POST   | `/api/v1/library`                    | JWT       | Add game to library              |
-| PATCH  | `/api/v1/library/{id}`               | JWT       | Update library entry             |
-| DELETE | `/api/v1/library/{id}`               | JWT       | Remove game from library         |
-| PATCH  | `/api/v1/library/{id}/favorite`      | JWT       | Toggle favorite                  |
-| GET    | `/api/v1/users/me`                   | JWT       | Get current user profile         |
-| PATCH  | `/api/v1/users/me`                   | JWT       | Update user profile              |
-| DELETE | `/api/v1/users/me`                   | JWT       | Delete user account              |
-| GET    | `/api/v1/catalog`                    | None      | Browse official rulesets         |
-| GET    | `/api/v1/catalog/{slug}`             | None      | Get official game details        |
-| POST   | `/api/v1/publishers`                 | None      | Register publisher (returns key) |
-| GET    | `/api/v1/publishers/{id}`            | None      | Get publisher details            |
-| POST   | `/api/v1/publishers/{id}/games`      | API Key   | Add official ruleset             |
-| POST   | `/api/v1/publishers/{id}/rotate-key` | API Key   | Rotate publisher API key         |
-| POST   | `/api/v1/billing/checkout`           | JWT       | Create Stripe checkout           |
-| GET    | `/api/v1/billing/tiers`              | None      | List subscription tiers          |
-| GET    | `/api/v1/billing/subscription`       | JWT       | Get user's subscription          |
-| POST   | `/api/v1/billing/webhooks/stripe`    | Signature | Stripe webhook receiver          |
-| GET    | `/api/v1/admin/stats`                | JWT+Admin | System-wide statistics           |
-| GET    | `/api/v1/admin/users`                | JWT+Admin | List all users                   |
-| PATCH  | `/api/v1/admin/users/{id}/role`      | JWT+Admin | Update user role (USER/ADMIN)    |
-| GET    | `/api/v1/admin/publishers`           | JWT+Admin | List publishers                  |
-| GET    | `/api/v1/admin/tiers`                | JWT+Admin | Get/update subscription tiers    |
-| PUT    | `/api/v1/admin/tiers/{name}`         | JWT+Admin | Update tier limits               |
-| GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings        |
-| GET    | `/api/v1/rulings/public`             | JWT       | List public community rulings    |
-| POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                    |
-| DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling            |
-| POST   | `/api/v1/parties`                    | JWT       | Create a party                   |
-| GET    | `/api/v1/parties`                    | JWT       | List user's parties              |
-| POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                     |
-| POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                    |
-| DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)      |
-| GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members               |
+| Method | Path                                 | Auth      | Description                       |
+| ------ | ------------------------------------ | --------- | --------------------------------- |
+| GET    | `/health`                            | None      | Service health + DB connectivity  |
+| POST   | `/api/v1/sessions`                   | JWT       | Create game session               |
+| GET    | `/api/v1/sessions`                   | JWT       | List user sessions                |
+| POST   | `/api/v1/rules/upload`               | JWT       | Upload rulebook PDF               |
+| GET    | `/api/v1/rulesets/{id}/status`       | JWT       | Poll ingestion status             |
+| GET    | `/api/v1/rulesets`                   | JWT       | List user's rulesets              |
+| POST   | `/api/v1/judge`                      | JWT       | Submit rules question             |
+| POST   | `/api/v1/judge/{id}/feedback`        | JWT       | Submit verdict feedback           |
+| GET    | `/api/v1/library`                    | JWT       | Get user's game library           |
+| POST   | `/api/v1/library`                    | JWT       | Add game to library               |
+| PATCH  | `/api/v1/library/{id}`               | JWT       | Update library entry              |
+| DELETE | `/api/v1/library/{id}`               | JWT       | Remove game from library          |
+| PATCH  | `/api/v1/library/{id}/favorite`      | JWT       | Toggle favorite                   |
+| GET    | `/api/v1/users/me`                   | JWT       | Get current user profile          |
+| PATCH  | `/api/v1/users/me`                   | JWT       | Update user profile               |
+| DELETE | `/api/v1/users/me`                   | JWT       | Delete user account               |
+| GET    | `/api/v1/catalog`                    | None      | Browse official rulesets (search) |
+| GET    | `/api/v1/catalog/{slug}`             | None      | Get official game details         |
+| POST   | `/api/v1/publishers`                 | None      | Register publisher (returns key)  |
+| GET    | `/api/v1/publishers/{id}`            | None      | Get publisher details             |
+| POST   | `/api/v1/publishers/{id}/games`      | API Key   | Add official ruleset              |
+| POST   | `/api/v1/publishers/{id}/rotate-key` | API Key   | Rotate publisher API key          |
+| POST   | `/api/v1/billing/checkout`           | JWT       | Create Stripe checkout            |
+| POST   | `/api/v1/billing/portal`             | JWT       | Create Stripe customer portal     |
+| GET    | `/api/v1/billing/tiers`              | None      | List subscription tiers           |
+| GET    | `/api/v1/billing/subscription`       | JWT       | Get user's subscription           |
+| POST   | `/api/v1/billing/webhooks/stripe`    | Signature | Stripe webhook receiver           |
+| GET    | `/api/v1/admin/stats`                | JWT+Admin | System-wide statistics            |
+| GET    | `/api/v1/admin/users`                | JWT+Admin | List all users                    |
+| PATCH  | `/api/v1/admin/users/{id}/role`      | JWT+Admin | Update user role (USER/ADMIN)     |
+| GET    | `/api/v1/admin/publishers`           | JWT+Admin | List publishers                   |
+| PATCH  | `/api/v1/admin/publishers/{id}`      | JWT+Admin | Update publisher details          |
+| GET    | `/api/v1/admin/tiers`                | JWT+Admin | List subscription tiers           |
+| PATCH  | `/api/v1/admin/tiers/{id}`           | JWT+Admin | Update tier limits                |
+| GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings         |
+| GET    | `/api/v1/rulings?game_name=X`        | JWT       | Filter rulings by game            |
+| GET    | `/api/v1/rulings/games`              | JWT       | Distinct game names + counts      |
+| GET    | `/api/v1/rulings/public`             | None      | List public community rulings     |
+| POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                     |
+| PATCH  | `/api/v1/rulings/{id}`               | JWT       | Update ruling metadata            |
+| DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling             |
+| GET    | `/api/v1/agents`                     | JWT       | List user's agents (sessions)     |
+| POST   | `/api/v1/parties`                    | JWT       | Create a party                    |
+| GET    | `/api/v1/parties`                    | JWT       | List user's parties               |
+| POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                      |
+| POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                     |
+| DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)       |
+| GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members                |
+| DELETE | `/api/v1/parties/{id}/members/{uid}` | JWT       | Remove member (owner only)        |
+| PATCH  | `/api/v1/parties/{id}/owner`         | JWT       | Transfer ownership                |
+| GET    | `/api/v1/parties/{id}/invite`        | JWT       | Generate JWT invite link (48h)    |
+| POST   | `/api/v1/parties/join-via-link`      | JWT       | Join via signed invite token      |
+| GET    | `/api/v1/parties/{id}/game-shares`   | JWT       | List party game shares            |
+| PUT    | `/api/v1/parties/{id}/game-shares`   | JWT       | Update party game shares          |
 
 ### 3.3 Error Codes
 
@@ -361,7 +412,7 @@ CREATE TABLE saved_rulings (
 10. Recursive semantic chunking (300–500 tokens, 50-token overlap)
 11. Header prepending to each chunk
 12. Batch embedding (100 chunks/call, exponential backoff)
-13. Pinecone upsert + index count verification
+13. pgvector upsert + row count verification
 14. HARD DELETE source PDF (overwrite + unlink)
 15. Update status → `INDEXED`
 
@@ -380,15 +431,16 @@ CREATE TABLE saved_rulings (
 ### 5.1 Pipeline Steps
 
 1. **Query expansion:** LLM rewrite + game term extraction + sub-query decomposition
-2. **Hybrid search:** Dense (Pinecone, top 50) + Sparse (BM25) → RRF merge
-3. **Multi-namespace fan-out:** Search `user_{id}` + official namespaces
-4. **Multi-hop retrieval:** Second pass if chunks reference other sections
-5. **Cross-encoder rerank:** Score top 50 → select top 10
-6. **Hierarchy re-sort:** Promote higher `source_priority` on overlapping chunks
-7. **Conflict detection:** Flag contradictions between source types
-8. **Verdict generation:** Chain-of-thought LLM with calibrated confidence
-9. **Citation truncation:** 300-char snippet cap
-10. **Audit log:** Full trace to `query_audit_log`
+2. **Dense vector search:** pgvector L2 nearest-neighbor query (top 50)
+3. **Multi-ruleset fan-out:** Search across `ruleset_id` filters (official + user rulesets)
+4. **Cross-encoder rerank:** Score top 50 → select top 10
+5. **Hierarchy re-sort:** Promote higher `source_priority` on overlapping chunks
+6. **Conflict detection:** Flag contradictions between source types
+7. **Verdict generation:** Chain-of-thought LLM with calibrated confidence
+8. **Citation truncation:** 300-char snippet cap
+9. **Audit log:** Full trace to `query_audit_log`
+
+> **Future:** BM25 sparse retrieval (reserved in code but not yet implemented) and multi-hop retrieval (second pass for cross-referenced chunks).
 
 ### 5.2 Confidence Calibration
 
@@ -403,16 +455,16 @@ CREATE TABLE saved_rulings (
 
 ## 6. Security Requirements
 
-| Requirement           | Implementation                                                     |
-| --------------------- | ------------------------------------------------------------------ |
-| File quarantine       | Uploaded files isolated until virus scan clears                    |
-| Sandbox execution     | PDF processing in ephemeral containers with no DB/network access   |
-| Tenant isolation      | Per-user Pinecone namespaces, `user_id` FK on all rows             |
-| Rate limiting         | Redis sliding window: 10/min FREE, 60/min PRO                      |
-| Input sanitization    | Query length ≤ 500 chars, HTML/script stripping, parameterized SQL |
-| Encryption in transit | TLS required, HSTS headers                                         |
-| Secret management     | Environment variables (AWS Secrets Manager in production)          |
-| Hash blocklist        | SHA-256 blocklist for known-bad files                              |
+| Requirement           | Implementation                                                             |
+| --------------------- | -------------------------------------------------------------------------- |
+| File quarantine       | Uploaded files isolated until virus scan clears                            |
+| Sandbox execution     | PDF processing in ephemeral containers with no DB/network access           |
+| Tenant isolation      | Per-ruleset vector isolation via `ruleset_id` FK, `user_id` FK on all rows |
+| Rate limiting         | Redis sliding window: 10/min FREE, 60/min PRO                              |
+| Input sanitization    | Query length ≤ 500 chars, HTML/script stripping, parameterized SQL         |
+| Encryption in transit | TLS required, HSTS headers                                                 |
+| Secret management     | Environment variables (AWS Secrets Manager in production)                  |
+| Hash blocklist        | SHA-256 blocklist for known-bad files                                      |
 
 ---
 
@@ -425,7 +477,7 @@ CREATE TABLE saved_rulings (
 | Ingestion (50-page PDF)  | < 60s       | Celery task duration         |
 | Ingestion (500-page PDF) | < 5min      | Celery task duration         |
 | API throughput           | 100 req/s   | Load testing                 |
-| Pinecone query           | < 200ms P95 | Pinecone metrics             |
+| pgvector query           | < 200ms P95 | PostgreSQL query metrics     |
 
 ---
 
@@ -476,7 +528,7 @@ CREATE TABLE saved_rulings (
 
 ### Tracing
 
-- OpenTelemetry spans: API → Queue → Worker → Pinecone → LLM
+- OpenTelemetry spans: API → Queue → Worker → pgvector → LLM
 - Correlation IDs on all structured logs (`structlog`)
 
 ---
@@ -487,22 +539,22 @@ All LLM, embedding, and reranker components use Protocol interfaces, allowing ho
 
 ### 10.1 Protocol Interfaces
 
-| Protocol            | Methods                               | Implementations                   |
-| ------------------- | ------------------------------------- | --------------------------------- |
-| `LLMProvider`       | `generate()`, `generate_structured()` | OpenAI GPT-4o, Bedrock Claude 3.5 |
-| `EmbeddingProvider` | `embed()`, `embed_batch()`            | OpenAI, Bedrock Titan v2          |
-| `RerankerProvider`  | `rerank()`                            | Cohere Rerank v3, FlashRank       |
-| `VectorStore`       | `upsert()`, `query()`, `delete()`     | Pinecone Serverless               |
-| `DocumentParser`    | `parse()`                             | Docling                           |
+| Protocol                 | Methods                                                                             | Implementations                       |
+| ------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------- |
+| `LLMProvider`            | `complete()`, `stream()`                                                            | OpenAI GPT-4o, Bedrock Claude 3.5     |
+| `EmbeddingProvider`      | `embed_texts()`, `embed_query()`                                                    | OpenAI, Bedrock Titan v2              |
+| `RerankerProvider`       | `rerank()`                                                                          | Cohere Rerank v3, FlashRank           |
+| `VectorStoreProvider`    | `upsert()`, `query()`, `delete_by_ids()`, `delete_namespace()`, `namespace_stats()` | pgvector (primary), Pinecone (legacy) |
+| `DocumentParserProvider` | `parse()`                                                                           | Docling                               |
 
 ### 10.2 Configuration
 
 ```env
 # Provider selection — swap via env var
-LLM_PROVIDER=openai          # openai | bedrock
-EMBEDDING_PROVIDER=openai    # openai | bedrock
-RERANKER_PROVIDER=cohere     # cohere | flashrank | none
-VECTOR_STORE_PROVIDER=pinecone
+LLM_PROVIDER=openai              # openai | anthropic | bedrock
+EMBEDDING_PROVIDER=openai        # openai | bedrock
+RERANKER_PROVIDER=cohere         # cohere | flashrank | none
+VECTOR_STORE_PROVIDER=pgvector   # pgvector | pinecone
 PARSER_PROVIDER=docling
 
 # AWS Bedrock (when using bedrock providers)
@@ -516,9 +568,12 @@ BEDROCK_EMBED_MODEL_ID=amazon.titan-embed-text-v2:0
 Singleton factory with lazy loading. Providers are instantiated on first use and cached for the application lifetime.
 
 ```python
-from app.core.providers.registry import get_provider
+from app.core.registry import get_provider_registry
 
-llm = get_provider("llm")           # Returns configured LLMProvider
-embedder = get_provider("embedding") # Returns configured EmbeddingProvider
-reranker = get_provider("reranker")  # Returns configured RerankerProvider
+registry = get_provider_registry()
+llm = registry.get_llm()           # Returns configured LLMProvider
+embedder = registry.get_embedder() # Returns configured EmbeddingProvider
+reranker = registry.get_reranker()  # Returns configured RerankerProvider
+vector = registry.get_vector_store() # Returns configured VectorStoreProvider
+parser = registry.get_parser()      # Returns configured DocumentParserProvider
 ```

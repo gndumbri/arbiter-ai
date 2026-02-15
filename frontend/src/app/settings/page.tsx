@@ -260,6 +260,26 @@ function SettingsContent() {
               {isUpgrading ? "Redirecting to Checkout..." : "Upgrade to Hero Tier"}
             </Button>
           )}
+          {isProUser && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={async () => {
+                try {
+                  const result = await api.createPortalSession();
+                  window.location.href = result.portal_url;
+                } catch (error) {
+                  toast({
+                    title: "Portal Unavailable",
+                    description: error instanceof Error ? error.message : "Failed to open subscription portal.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+            >
+              Manage Subscription
+            </Button>
+          )}
         </CardContent>
       </Card>
       
