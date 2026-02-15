@@ -223,6 +223,23 @@ class OfficialRuleset(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, nullable=False, default="PROCESSING")
     pinecone_namespace: Mapped[str] = mapped_column(String, nullable=False)
+    # ── Legal provenance (Hybrid Catalog) ────────────────────────────────
+    license_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="PROPRIETARY",
+        comment="License identifier, e.g. 'CC-BY-4.0', 'OGL-1.0a', 'PROPRIETARY'.",
+    )
+    source_url: Mapped[str | None] = mapped_column(
+        String, nullable=True,
+        comment="URL where the open-licensed content was fetched from.",
+    )
+    attribution_text: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="Required attribution notice for CC/OGL content.",
+    )
+    is_crawlable: Mapped[bool] = mapped_column(
+        Boolean, default=False,
+        comment="Whether we can legally auto-fetch and index the rules content.",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

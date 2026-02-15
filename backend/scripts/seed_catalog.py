@@ -198,7 +198,12 @@ POPULAR_GAMES = [
 
 
 async def seed() -> None:
-    """Seed the database with metadata-only game entries.
+    """Seed the database with metadata-only game entries + live data.
+
+    Three data sources, run in order:
+        1. Static catalog (POPULAR_GAMES) — ~132 curated games
+        2. BGG Hot 50 — live trending board games from BoardGameGeek
+        3. Open5e SRD — D&D 5e System Reference Document (CC-BY-4.0)
 
     Idempotent: skips any games whose slug already exists in the DB.
     """
@@ -230,7 +235,7 @@ async def seed() -> None:
         else:
             logger.info("seed_publisher_exists", publisher_id=str(community_pub.id))
 
-        # 2. Seed games (skip duplicates by slug)
+        # ── Source 1: Static catalog ─────────────────────────────────────────
         seeded = 0
         for game in POPULAR_GAMES:
             existing_game = await db.execute(
@@ -250,6 +255,8 @@ async def seed() -> None:
                 # WHY: "UPLOAD_REQUIRED" signals the frontend to prompt users
                 # to upload their own rulebook before they can play.
                 status="UPLOAD_REQUIRED",
+                license_type="PROPRIETARY",
+                is_crawlable=False,
                 pinecone_namespace=f"placeholder_{game['slug']}",
                 version=game.get("ver", "1.0"),
             )
@@ -258,14 +265,38 @@ async def seed() -> None:
 
         await db.commit()
         logger.info(
-            "seed_catalog_complete",
+            "seed_static_complete",
             seeded=seeded,
             skipped=len(POPULAR_GAMES) - seeded,
             total=len(POPULAR_GAMES),
         )
 
+        # ── Source 2: BGG Hot 50 ─────────────────────────────────────────────
+        try:
+            from app.services.catalog.bgg_fetcher import sync_top_games
+
+            bgg_count = await sync_top_games(db, community_pub.id)
+            await db.commit()
+            logger.info("seed_bgg_complete", created=bgg_count)
+        except Exception as e:
+            logger.warning("seed_bgg_failed", error=str(e))
+            await db.rollback()
+
+        # ── Source 3: Open5e SRD (D&D 5e) ────────────────────────────────────
+        try:
+            from app.services.catalog.open5e_ingester import sync_srd
+
+            srd_chunks = await sync_srd(db, community_pub.id)
+            await db.commit()
+            logger.info("seed_open5e_complete", chunks=srd_chunks)
+        except Exception as e:
+            logger.warning("seed_open5e_failed", error=str(e))
+            await db.rollback()
+
     await engine.dispose()
+    logger.info("seed_catalog_done")
 
 
 if __name__ == "__main__":
     asyncio.run(seed())
+
