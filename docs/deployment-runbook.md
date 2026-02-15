@@ -371,7 +371,10 @@ Set these GitHub repository secrets:
 Optional GitHub repository variables:
 
 - `vars.DEPLOY_MODE` (`sandbox` or `production`; default is `production`)
-- `vars.TF_STATE_KEY` (Terraform backend key override, example `sandbox/terraform.tfstate`)
+- `vars.TF_STATE_KEY` (Terraform backend key override, example `sandbox/terraform.tfstate`; set to `prod/terraform.tfstate` for production default)
+
+> [!IMPORTANT]
+> Canonical production Terraform state key is `prod/terraform.tfstate`. Avoid mixing `prod/...` and `production/...` keys.
 
 Trigger the workflow manually:
 
@@ -383,6 +386,8 @@ When manually triggering, you can override:
 
 - `deploy_mode` (`sandbox`/`production`)
 - `tf_state_key` (state key override per environment)
+- `force_unlock` (`true`/`false`, manual unlock step)
+- `force_unlock_id` (required lock ID when `force_unlock=true`)
 
 ---
 

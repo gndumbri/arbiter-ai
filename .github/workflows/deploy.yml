@@ -22,6 +22,16 @@ on:
         required: false
         default: ""
         type: string
+      force_unlock:
+        description: "Force-unlock Terraform state lock before plan/apply (manual runs only)"
+        required: false
+        default: false
+        type: boolean
+      force_unlock_id:
+        description: "Terraform lock ID to force-unlock (required when force_unlock=true)"
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   # Prevent parallel deploy workflow runs from competing on the same state lock.
@@ -213,6 +223,9 @@ jobs:
             TF_STATE_KEY="${{ vars.TF_STATE_KEY }}"
           fi
           if [ -z "$TF_STATE_KEY" ]; then
+            TF_STATE_KEY="${DEFAULT_TF_STATE_KEY}"
+          fi
+          if [ -z "$TF_STATE_KEY" ]; then
             TF_STATE_KEY="${DEPLOY_MODE}/terraform.tfstate"
           fi
 
@@ -227,6 +240,18 @@ jobs:
 
       - name: Terraform Init
         run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
+
+      - name: Validate manual force-unlock inputs
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id == '' }}
+        run: |
+          echo "::error::force_unlock=true requires force_unlock_id to be set."
+          exit 1
+
+      - name: Optional manual force-unlock
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id != '' }}
+        run: |
+          echo "Manual force-unlock requested for state key: ${{ steps.context.outputs.tf_state_key }}"
+          terraform force-unlock -force "${{ github.event.inputs.force_unlock_id }}"
 
       - name: Import existing ECS services
         env:

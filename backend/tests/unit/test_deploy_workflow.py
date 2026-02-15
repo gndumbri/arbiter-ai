@@ -30,6 +30,10 @@ def test_deploy_workflow_supports_state_key_and_mode_overrides() -> None:
     text = _read_workflow()
 
     assert "tf_state_key" in text
+    assert "force_unlock" in text
+    assert "force_unlock_id" in text
+    assert "DEFAULT_TF_STATE_KEY: prod/terraform.tfstate" in text
+    assert "TF_STATE_KEY=\"${DEFAULT_TF_STATE_KEY}\"" in text
     assert "terraform init -backend-config=\"key=${{ steps.context.outputs.tf_state_key }}\"" in text
     assert "-var=\"environment=${{ steps.context.outputs.deploy_mode }}\"" in text
     assert "-var=\"app_mode=${{ steps.context.outputs.deploy_mode }}\"" in text
@@ -81,3 +85,7 @@ def test_deploy_workflow_serializes_deploy_runs_and_handles_tf_locks() -> None:
     assert "group: deploy-${{ github.workflow }}-${{ github.ref }}" in text
     assert "-lock-timeout=10m" in text
     assert "terraform force-unlock -force" in text
+    assert "Validate manual force-unlock inputs" in text
+    assert "force_unlock=true requires force_unlock_id to be set." in text
+    assert "Optional manual force-unlock" in text
+    assert "github.event.inputs.force_unlock == 'true'" in text
