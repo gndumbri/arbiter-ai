@@ -43,10 +43,10 @@ resource "aws_ecr_lifecycle_policy" "backend" {
         rulePriority = 2
         description  = "Keep only 10 most recent tagged images"
         selection = {
-          tagStatus   = "tagged"
+          tagStatus     = "tagged"
           tagPrefixList = ["sha-"]
-          countType   = "imageCountMoreThan"
-          countNumber = 10
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
         }
         action = { type = "expire" }
       }
@@ -74,10 +74,10 @@ resource "aws_ecr_lifecycle_policy" "frontend" {
         rulePriority = 2
         description  = "Keep only 10 most recent tagged images"
         selection = {
-          tagStatus   = "tagged"
+          tagStatus     = "tagged"
           tagPrefixList = ["sha-"]
-          countType   = "imageCountMoreThan"
-          countNumber = 10
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
         }
         action = { type = "expire" }
       }

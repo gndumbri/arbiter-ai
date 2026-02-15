@@ -35,7 +35,7 @@ export default function CatalogPage() {
   const [addingSlugs, setAddingSlugs] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
-  const { data: backendCatalog, isLoading } = useSWR("catalog", api.listCatalog, {
+  const { data: backendCatalog, error: catalogError, isLoading } = useSWR("catalog", api.listCatalog, {
     onError: () => {}, // Gracefully handle backend being down
   });
 
@@ -54,10 +54,12 @@ export default function CatalogPage() {
     }
   }
 
-  // Backend catalog is the source of truth; fallbacks fill in only when backend is down
-  const allGames: CatalogEntry[] = backendCatalog && backendCatalog.length > 0
-    ? backendCatalog
-    : FALLBACK_CATALOG_GAMES;
+  // Backend catalog is the source of truth. Fallback list is only for
+  // backend-unreachable cases so we do not mask a truly empty database.
+  const useFallbackCatalog = Boolean(catalogError);
+  const allGames: CatalogEntry[] = useFallbackCatalog
+    ? FALLBACK_CATALOG_GAMES
+    : (backendCatalog ?? []);
 
   const filtered = allGames.filter(
     (g) =>
@@ -165,9 +167,23 @@ export default function CatalogPage() {
         />
       </div>
 
+      {useFallbackCatalog && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Armory is in offline fallback mode (backend unavailable). Showing a limited local list only.
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : !useFallbackCatalog && allGames.length === 0 ? (
+        <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
+          <Gamepad2 className="mb-4 h-12 w-12 text-muted-foreground" />
+          <h3 className="text-lg font-semibold">Armory catalog is empty</h3>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Seed the backend catalog and refresh this page.
+          </p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">

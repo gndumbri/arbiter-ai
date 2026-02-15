@@ -73,3 +73,24 @@ def test_backend_taskdef_healthcheck_does_not_require_curl() -> None:
 
     assert "curl" not in command
     assert "python -c" in command
+
+
+def test_backend_taskdef_mounts_shared_uploads_volume() -> None:
+    taskdef = _load_backend_taskdef()
+    container = taskdef["containerDefinitions"][0]
+    env = {item["name"]: item["value"] for item in container.get("environment", [])}
+
+    assert env.get("UPLOADS_DIR") == "/tmp/arbiter_uploads"
+    mount_points = container.get("mountPoints", [])
+    assert any(
+        mp.get("sourceVolume") == "uploads-shared"
+        and mp.get("containerPath") == "/tmp/arbiter_uploads"
+        for mp in mount_points
+    )
+
+    volumes = taskdef.get("volumes", [])
+    assert any(
+        v.get("name") == "uploads-shared"
+        and isinstance(v.get("efsVolumeConfiguration"), dict)
+        for v in volumes
+    )

@@ -192,7 +192,7 @@ aws secretsmanager create-secret \
     "OPEN_RULES_MAX_DOCUMENTS": "20",
     "OPEN_RULES_ALLOWED_LICENSES": "creative commons,open gaming license,orc",
     "OPEN_RULES_FORCE_REINDEX": "false",
-    "BREVO_API_KEY": "xkeysib-... (optional in sandbox)"
+    "EMAIL_SERVER": "smtp://SMTP_USERNAME:SMTP_PASSWORD@email-smtp.us-east-1.amazonaws.com:587"
   }'
 ```
 

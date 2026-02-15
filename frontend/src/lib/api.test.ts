@@ -72,4 +72,18 @@ describe("fetcher", () => {
 
     await expect(fetcher("/sessions", { method: "POST" })).rejects.toThrow("Try again later.");
   });
+
+  it("throws a clear network error when the API is unreachable", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetcher("/library")).rejects.toThrow("Could not reach Arbiter API");
+  });
+
+  it("throws a timeout error when the API request aborts", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetcher("/library")).rejects.toThrow("timed out");
+  });
 });

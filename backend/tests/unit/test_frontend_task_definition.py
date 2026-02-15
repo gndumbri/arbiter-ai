@@ -21,7 +21,7 @@ def test_frontend_taskdef_includes_expected_runtime_secrets() -> None:
     required = {
         "AUTH_SECRET",
         "DATABASE_URL",
-        "BREVO_API_KEY",
+        "EMAIL_SERVER",
     }
     assert required.issubset(secret_names)
 
@@ -42,6 +42,8 @@ def test_frontend_taskdef_sets_app_mode() -> None:
     env_map = {item["name"]: item["value"] for item in environment}
 
     assert env_map.get("APP_MODE") in {"sandbox", "production"}
+    assert env_map.get("EMAIL_PROVIDER") in {"ses", "brevo", "console"}
+    assert env_map.get("SANDBOX_EMAIL_BYPASS_ENABLED") in {"true", "false"}
 
 
 def test_frontend_taskdef_includes_api_base_and_nextauth_url() -> None:

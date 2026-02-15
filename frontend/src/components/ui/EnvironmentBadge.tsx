@@ -30,6 +30,8 @@ import { useEffect, useState } from "react";
 const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL?.trim();
 const API_BASE = RAW_API_URL
   ? RAW_API_URL.replace(/\/api\/v1\/?$/, "")
+  // Production fallback is same-origin (empty base) to avoid hardcoded localhost
+  // in deployed browser bundles. Dev keeps localhost for local backend workflows.
   : (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 /**

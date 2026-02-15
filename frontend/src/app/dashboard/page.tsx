@@ -164,7 +164,9 @@ export default function DashboardPage() {
         </div>
       ) : error ? (
         <div className="rounded-md bg-destructive/15 p-4 text-destructive">
-          Failed to load rulesets. Is the backend running?
+          {error instanceof Error
+            ? error.message
+            : "Failed to load rulesets. Is the backend running?"}
         </div>
       ) : rulesets?.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">

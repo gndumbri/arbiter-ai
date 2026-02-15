@@ -45,13 +45,15 @@ Each backend secret should be a **JSON object** with these required keys:
 Optional (provider-dependent) keys:
 
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (required in production; optional in sandbox unless `inject_optional_sandbox_secrets=true`)
-- `BREVO_API_KEY` (required in production frontend email flows; optional in sandbox)
+- Frontend email provider keys:
+  - `EMAIL_SERVER` when `email_provider=ses` (recommended default)
+  - `BREVO_API_KEY` when `email_provider=brevo`
 - `OPENAI_API_KEY` when `LLM_PROVIDER=openai` and/or `EMBEDDING_PROVIDER=openai`
 - `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
 
 > [!IMPORTANT]
 > ECS/Fargate does not read your local `.env` files after commit. Runtime config comes only from task-definition `environment` + `secrets` injection.
-> If a key is referenced in `containerDefinitions[].secrets`, that JSON key must exist in Secrets Manager (empty string is allowed for sandbox optional keys like `BREVO_API_KEY`).
+> If a key is referenced in `containerDefinitions[].secrets`, that JSON key must exist in Secrets Manager (empty string is allowed for sandbox optional keys).
 
 ### How to generate them
 
@@ -137,8 +139,13 @@ allowed_origins = "https://sandbox.arbiter-ai.com"
 alb_certificate_arn = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<SANDBOX_CERT_UUID>"
 frontend_nextauth_url = "https://sandbox.arbiter-ai.com"
 next_public_api_url = "/api/v1"
+email_provider = "ses"
+sandbox_email_bypass_enabled = true
 inject_optional_sandbox_secrets = false
-secret_name     = "arbiter-ai/sandbox"
+worker_desired_count = 1
+beat_desired_count   = 1
+uploads_dir          = "/tmp/arbiter_uploads"
+secrets_manager_arn  = "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:arbiter-ai/sandbox-XXXX"
 ```
 
 ```hcl
@@ -150,7 +157,12 @@ allowed_origins = "https://arbiter-ai.com,https://www.arbiter-ai.com"
 alb_certificate_arn = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<PROD_CERT_UUID>"
 frontend_nextauth_url = "https://arbiter-ai.com"
 next_public_api_url = "/api/v1"
-secret_name     = "arbiter-ai/production"
+email_provider = "ses"
+sandbox_email_bypass_enabled = false
+worker_desired_count = 1
+beat_desired_count   = 1
+uploads_dir          = "/tmp/arbiter_uploads"
+secrets_manager_arn  = "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:arbiter-ai/production-XXXX"
 ```
 
 ### 4b. ECS task definition in Terraform
@@ -190,12 +202,16 @@ resource "aws_ecs_task_definition" "backend" {
 
     # ─── Sensitive values (pulled from Secrets Manager at startup) ─────
     secrets = [
-      { name = "DATABASE_URL",          valueFrom = "${var.secret_arn}:DATABASE_URL::" },
-      { name = "REDIS_URL",             valueFrom = "${var.secret_arn}:REDIS_URL::" },
-      { name = "NEXTAUTH_SECRET",       valueFrom = "${var.secret_arn}:NEXTAUTH_SECRET::" },
-      { name = "STRIPE_SECRET_KEY",     valueFrom = "${var.secret_arn}:STRIPE_SECRET_KEY::" },
-      { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${var.secret_arn}:STRIPE_WEBHOOK_SECRET::" },
-      { name = "STRIPE_PRICE_ID",       valueFrom = "${var.secret_arn}:STRIPE_PRICE_ID::" },
+      { name = "DATABASE_URL",          valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
+      { name = "REDIS_URL",             valueFrom = "${var.secrets_manager_arn}:REDIS_URL::" },
+      { name = "NEXTAUTH_SECRET",       valueFrom = "${var.secrets_manager_arn}:NEXTAUTH_SECRET::" },
+      { name = "STRIPE_SECRET_KEY",     valueFrom = "${var.secrets_manager_arn}:STRIPE_SECRET_KEY::" },
+      { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${var.secrets_manager_arn}:STRIPE_WEBHOOK_SECRET::" },
+      { name = "STRIPE_PRICE_ID",       valueFrom = "${var.secrets_manager_arn}:STRIPE_PRICE_ID::" },
+    ]
+
+    mountPoints = [
+      { sourceVolume = "uploads-shared", containerPath = "/tmp/arbiter_uploads" }
     ]
 
     healthCheck = {
@@ -215,6 +231,13 @@ resource "aws_ecs_task_definition" "backend" {
       }
     }
   }])
+
+  volume {
+    name = "uploads-shared"
+    efs_volume_configuration {
+      file_system_id = aws_efs_file_system.uploads.id
+    }
+  }
 }
 ```
 
@@ -244,8 +267,13 @@ The frontend needs these env vars set in the hosting platform dashboard:
 | `NEXTAUTH_URL`    | `https://sandbox.arbiter-ai.com`  | `https://arbiter-ai.com`          |
 | `NEXT_PUBLIC_API_URL` | `/api/v1` (recommended with ALB path routing) | `/api/v1` (or full backend URL) |
 | `DATABASE_URL`    | RDS connection string (non-async) | RDS connection string (non-async) |
-| `BREVO_API_KEY`   | Optional (console fallback)       | Required                          |
-| `EMAIL_FROM`      | `noreply@arbiter-ai.com`          | `noreply@arbiter-ai.com`          |
+| `EMAIL_PROVIDER`  | `ses` (recommended)               | `ses` (recommended)               |
+| `EMAIL_SERVER`    | Optional (console fallback if omitted) | Required for SES delivery     |
+| `SANDBOX_EMAIL_BYPASS_ENABLED` | `true` (temporary tester bypass) | `false`                      |
+| `BREVO_API_KEY`   | Optional (`EMAIL_PROVIDER=brevo`) | Optional (`EMAIL_PROVIDER=brevo`) |
+| `EMAIL_FROM`      | `noreply@getquuie.com`            | `noreply@getquuie.com`            |
+
+Sandbox bypass allowlist (temporary): `kasey.kaplan@gmail.com`, `gndumbri@gmail.com`.
 
 > [!WARNING]
 > The frontend `DATABASE_URL` uses the **synchronous** driver (`postgresql://`), NOT the async one (`postgresql+asyncpg://`) that the backend uses. Same RDS instance, different connection string format.
@@ -291,11 +319,21 @@ Set these GitHub repository secrets:
 - `secrets.DB_PASSWORD` (RDS master password Terraform input)
 - `secrets.NEXT_PUBLIC_API_URL` (optional; defaults to `/api/v1` in build job)
 
+Optional GitHub repository variables:
+
+- `vars.DEPLOY_MODE` (`sandbox` or `production`; default is `production`)
+- `vars.TF_STATE_KEY` (Terraform backend key override, example `sandbox/terraform.tfstate`)
+
 Trigger the workflow manually:
 
 ```text
 Actions → Deploy ECS → Run workflow
 ```
+
+When manually triggering, you can override:
+
+- `deploy_mode` (`sandbox`/`production`)
+- `tf_state_key` (state key override per environment)
 
 ---
 
@@ -308,14 +346,16 @@ Before you go live, verify:
 - [ ] **ECS task role** has Bedrock `InvokeModel` permission
 - [ ] **RDS** is accessible from the ECS security group (port 5432)
 - [ ] **ElastiCache/Redis** is accessible from the ECS security group (port 6379)
+- [ ] **EFS uploads volume** is mounted in backend and worker tasks (`UPLOADS_DIR=/tmp/arbiter_uploads`)
 - [ ] **pgvector extension** is enabled on the RDS instance (`CREATE EXTENSION IF NOT EXISTS vector;`)
 - [ ] **DB migrations** have been run (tables exist: `users`, `accounts`, `verification_tokens`, etc.)
 - [ ] **`NEXTAUTH_SECRET`** matches between backend secret and frontend env
 - [ ] **`NEXT_PUBLIC_API_URL`** is set for frontend build (or intentionally defaults to `/api/v1`)
 - [ ] **Stripe webhook** is pointed at `https://<domain>/api/v1/billing/webhooks/stripe`
-- [ ] **Brevo sender domain** is verified (or using a verified sender email)
+- [ ] **SES sender identity/domain** is verified (or equivalent provider verification is complete)
 - [ ] **Preflight gate passes** (`make preflight-sandbox` / `make preflight-production`)
 - [ ] **GitHub deploy workflow** succeeds (image build + Terraform apply + ECS service stabilization)
+- [ ] **ECS services** show healthy desired counts for `backend`, `frontend`, `worker`, and `beat`
 - [ ] **Health check** passes: `curl https://<domain>/health`
 
 ---
@@ -325,16 +365,19 @@ Before you go live, verify:
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ Secrets Manager (arbiter-ai/{env})                      │
-│  DATABASE_URL, REDIS_URL, NEXTAUTH_SECRET,              │
+│  DATABASE_URL, FRONTEND_DATABASE_URL, REDIS_URL,        │
+│  NEXTAUTH_SECRET,                                       │
 │  STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,              │
-│  STRIPE_PRICE_ID                                        │
+│  STRIPE_PRICE_ID, EMAIL_SERVER (SES),                   │
+│  BREVO_API_KEY (only if email_provider=brevo)           │
 └─────────────────────────────┬───────────────────────────┘
                               │ pulled at container start
 ┌─────────────────────────────▼───────────────────────────┐
 │ ECS Task Definition (environment block)                 │
 │  APP_MODE, APP_ENV, ALLOWED_ORIGINS, APP_BASE_URL,      │
 │  LLM_PROVIDER, EMBEDDING_PROVIDER, RERANKER_PROVIDER,   │
-│  VECTOR_STORE_PROVIDER, LOG_LEVEL, TRUSTED_PROXY_HOPS   │
+│  VECTOR_STORE_PROVIDER, LOG_LEVEL, TRUSTED_PROXY_HOPS,   │
+│  UPLOADS_DIR                                             │
 └─────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────┐
@@ -355,5 +398,5 @@ Before you go live, verify:
 > 4. **An RDS Postgres 16 instance** with the `vector` extension enabled
 > 5. **An ElastiCache Redis 7 cluster** (single node is fine for sandbox)
 > 6. **Security groups** allowing ECS → RDS (5432) and ECS → Redis (6379)
-> 7. **An ECR repository** called `arbiter-ai/backend` for the Docker images
-> 8. **A CloudWatch log group** at `/ecs/arbiter-backend-sandbox`
+> 7. **ECR repositories** called `arbiter-ai-backend` and `arbiter-ai-frontend`
+> 8. **CloudWatch log groups** for backend/frontend/worker/beat services

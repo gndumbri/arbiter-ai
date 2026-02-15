@@ -67,7 +67,9 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - New maintenance commands were added for deterministic sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
 - Backend deployment readiness now includes explicit preflight gates (`backend/scripts/preflight.py`, `make preflight-sandbox`, `make preflight-production`) that verify env configuration plus DB/Redis/provider health before promotion.
 - Deployment automation now includes a required CI preflight stage (`.github/workflows/deploy.yml`) so ECS service updates are blocked on failed readiness checks.
-- Frontend auth/email flow now degrades gracefully in sandbox (console fallback when Brevo is missing or transiently failing) while keeping production strict for delivery quality.
+- Frontend auth/email flow now defaults to SES and degrades gracefully in sandbox (console fallback when provider credentials are missing or transiently failing) while keeping production strict for delivery quality.
+- Terraform frontend secret mapping is now email-provider aware (`EMAIL_SERVER` for SES, `BREVO_API_KEY` for Brevo) to prevent ECS startup failures from unused secret keys.
+- Sandbox auth now includes a temporary allowlisted credentials bypass for `kasey.kaplan@gmail.com` and `gndumbri@gmail.com` (no magic-link required), controlled by `SANDBOX_EMAIL_BYPASS_ENABLED` and disabled outside sandbox.
 - Ask flow now auto-links exact-name READY official rulesets when sessions were created without explicit linkage, and surfaces actionable indexing guidance instead of opaque judge failures.
 - Shelf-to-Ask flow now starts from library entries directly, reusing indexed game sessions or creating official rules-linked sessions so game selection and adjudication context stay aligned.
 - Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
@@ -75,9 +77,14 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.
 - API now supports direct session metadata lookup by ID for more reliable game-context rendering in Ask/chat views.
 - Frontend production builds now default API calls to same-origin `/api/v1` when `NEXT_PUBLIC_API_URL` is missing, avoiding accidental `localhost:8000` calls in AWS.
-- Terraform deploy wiring now supports environment-specific URL/CORS/auth vars and optional sandbox secret injection, preventing ECS startup failures when non-production keys (e.g., Brevo/Stripe) are intentionally omitted.
+- Frontend now defaults to same-origin `/api/v1` in both local and AWS builds when `NEXT_PUBLIC_API_URL` is missing, with local Next.js proxy rewrites to FastAPI via `BACKEND_ORIGIN` (default `http://localhost:8000`) for consistent routing behavior.
+- Frontend now prevents broken AWS bundles by auto-overriding production `NEXT_PUBLIC_API_URL` values that still point to localhost.
+- Terraform deploy wiring now supports environment-specific URL/CORS/auth vars and optional sandbox secret injection, preventing ECS startup failures when non-production keys (e.g., SES/Brevo/Stripe) are intentionally omitted.
+- Terraform deploy wiring now includes dedicated ECS worker/beat services plus shared EFS upload storage, so async ingestion and scheduled catalog/rules sync run reliably in AWS.
 - Frontend environment badge now avoids `localhost` health probes in production builds and follows same-origin fallback behavior.
 - ECS health checks were hardened to avoid `curl` dependencies, and Terraform env naming now consistently uses `production`, preventing snapshot-policy drift and startup surprises.
+- Armory/Add-Game now show explicit offline fallback messaging when backend catalog calls fail, preventing silent partial-list confusion.
+- Deploy workflow now force-rolls and waits on `backend`, `frontend`, `worker`, and `beat` services to prevent partial AWS releases.
 
 ### F1: Game Library (Dashboard)
 
@@ -169,7 +176,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 **Acceptance Criteria:**
 
-- Passwordless email login via NextAuth magic links (Brevo transactional email)
+- Passwordless email login via NextAuth magic links (SES by default; Brevo optional)
 - Stripe-powered checkout and self-service portal
 - Configurable tier limits via Admin portal (database-backed `subscription_tiers` table)
 - Saved rulings with privacy controls (PRIVATE, PARTY, PUBLIC)

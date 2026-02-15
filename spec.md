@@ -21,7 +21,7 @@
 | **Reranker**    | FlashRank (default, local)     | —         | Cross-encoder scoring, no API key needed            |
 | **PDF Parsing** | Docling / Unstructured         | —         | Layout-aware PDF extraction                         |
 | **Frontend**    | Next.js 16+ (App Router)       | 16+       | PWA, React Server Components                        |
-| **Auth**        | NextAuth.js v5 + Brevo         | —         | Passwordless magic links, JWT sessions              |
+| **Auth**        | NextAuth.js v5 + SES (default) | —         | Passwordless magic links, JWT sessions              |
 | **Billing**     | Stripe                         | —         | Subscriptions, webhooks                             |
 | **Config**      | pydantic-settings              | 2.0+      | Typed configuration from env vars                   |
 | **Logging**     | structlog                      | —         | Structured JSON logging with request IDs            |
@@ -97,18 +97,26 @@
 - Added one-shot maintenance scripts for production-safe sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
 - Added a deploy-grade backend preflight command (`backend/scripts/preflight.py`) plus `make preflight-sandbox` / `make preflight-production` gates for environment, DB, Redis, provider stack, and optional live Bedrock probes.
 - Added a repo GitHub Actions deploy workflow (`.github/workflows/deploy.yml`) that runs an ECS preflight task as a required gate before backend service deployment.
-- Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when Brevo is unavailable; production remains strict.
+- Frontend communication service now defaults to `EMAIL_PROVIDER=ses` with non-production console fallback and production-strict provider validation; Brevo remains an optional provider.
+- Terraform frontend task wiring now maps provider-specific email secrets (`EMAIL_SERVER` for SES, `BREVO_API_KEY` for Brevo) so unused keys do not break ECS startup.
+- Sandbox auth now supports an allowlisted credentials bypass (`kasey.kaplan@gmail.com`, `gndumbri@gmail.com`) to skip magic-link email during AWS sandbox testing; behavior is gated by `SANDBOX_EMAIL_BYPASS_ENABLED` and forced off outside sandbox.
 - Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
 - Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
 - Frontend API base resolution now defaults to same-origin `/api/v1` in production when `NEXT_PUBLIC_API_URL` is unset (instead of `localhost`), preventing broken AWS browser calls.
+- Frontend API base resolution now defaults to same-origin `/api/v1` in both development and production when `NEXT_PUBLIC_API_URL` is unset; local Next.js rewrites proxy `/api/v1/*` to FastAPI (`BACKEND_ORIGIN`, default `http://localhost:8000`) for environment parity.
+- Frontend now hard-blocks accidental production localhost API targets by overriding `NEXT_PUBLIC_API_URL=http://localhost...` to same-origin `/api/v1` at runtime.
 - Environment badge health checks now follow the same production-safe API base fallback (same-origin) instead of `localhost`.
-- Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe/Brevo to avoid startup failures when those keys are intentionally absent.
+- Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe + selected email provider keys to avoid startup failures when those keys are intentionally absent.
+- Terraform now provisions dedicated Celery `worker` and `beat` ECS services (in addition to API/frontend) so async ingestion and scheduled catalog/rules sync jobs run in AWS by default.
+- Terraform now provisions an EFS shared uploads volume and mounts it into backend/worker/beat task definitions at `UPLOADS_DIR`, ensuring reliable backend→worker file handoff for rules ingestion.
 - ECS task-definition health checks now avoid `curl` dependencies (backend uses Python stdlib probe; frontend uses Node fetch probe) for cleaner container startup on minimal base images.
 - Terraform environment defaults now consistently use `production` (not mixed `prod`/`production`), including RDS final-snapshot safeguards.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).
 - Ask/chat UI width now uses tighter max-width containers to avoid over-stretched desktop layouts.
 - Added `GET /api/v1/sessions/{id}` for reliable single-session metadata fetch (game, persona, prompt override) in chat surfaces.
 - New session creation wizard now captures game name separately from NPC identity, so game association remains accurate in Ask listings and chat context.
+- Armory surfaces explicit offline-fallback warnings (limited local catalog list) so backend outages are visible instead of appearing as partial catalog data.
+- Deploy workflow rollout now force-deploys and waits on `backend`, `frontend`, `worker`, and `beat` ECS services to prevent partial-service release drift.
 
 ---
 

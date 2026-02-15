@@ -11,3 +11,17 @@ resource "aws_cloudwatch_log_group" "frontend" {
 
   tags = { Name = "${var.project_name}-frontend-logs" }
 }
+
+resource "aws_cloudwatch_log_group" "worker" {
+  name              = "/ecs/${var.project_name}-worker"
+  retention_in_days = 30
+
+  tags = { Name = "${var.project_name}-worker-logs" }
+}
+
+resource "aws_cloudwatch_log_group" "beat" {
+  name              = "/ecs/${var.project_name}-beat"
+  retention_in_days = 30
+
+  tags = { Name = "${var.project_name}-beat-logs" }
+}

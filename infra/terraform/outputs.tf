@@ -33,6 +33,16 @@ output "frontend_service_name" {
   value       = aws_ecs_service.frontend.name
 }
 
+output "worker_service_name" {
+  description = "Name of the worker ECS service"
+  value       = aws_ecs_service.worker.name
+}
+
+output "beat_service_name" {
+  description = "Name of the beat ECS service"
+  value       = aws_ecs_service.beat.name
+}
+
 output "github_actions_role_arn" {
   description = "IAM role ARN for GitHub Actions OIDC"
   value       = aws_iam_role.github_actions.arn
@@ -57,4 +67,9 @@ output "redis_endpoint" {
 output "redis_url" {
   description = "Constructed REDIS_URL — update this value in Secrets Manager"
   value       = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}/0"
+}
+
+output "uploads_efs_id" {
+  description = "EFS filesystem id used for shared backend/worker uploads"
+  value       = aws_efs_file_system.uploads.id
 }
