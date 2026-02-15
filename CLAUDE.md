@@ -41,6 +41,42 @@ These are NOT optional. A feature is not done until all quality gates pass.
 - `cd backend && uv run ruff check app/` — Lint Python
 - `cd backend && uv run mypy app/ --ignore-missing-imports` — Type check Python
 
+## Dependency & Docker Build Sync
+
+When `frontend/package.json` or `frontend/package-lock.json` change (adding, removing, or upgrading dependencies), you **must** verify the container build is not broken:
+
+1. **Node version must match.** The `node:XX-alpine` base image in `frontend/Dockerfile` must use the same **major** Node version as the local dev environment (currently Node 25 / npm 11). A mismatch causes `npm ci` to fail or produce a different dependency tree. Check with `node --version` locally and compare to the `FROM` lines in `frontend/Dockerfile`.
+2. **Always run `npm install` locally first** to regenerate `package-lock.json`, then commit both `package.json` and `package-lock.json` together.
+3. **`npm ci` in Docker.** The frontend Dockerfile uses `npm ci` (not `npm install`) for deterministic builds from the lockfile. If `npm ci` fails in Docker but `npm install` works locally, the most common cause is a Node/npm version mismatch between the Dockerfile base image and your local environment.
+4. **`.npmrc` must be present.** `frontend/.npmrc` sets `legacy-peer-deps=true` so both local dev and Docker behave consistently without CLI flags. Do not remove it.
+5. **Backend deps (Python/uv).** The backend Dockerfile uses `uv sync --frozen` against `pyproject.toml` / `uv.lock`. After changing Python dependencies, run `uv lock` locally and commit `uv.lock`.
+
+**Checklist after any dependency change:**
+- [ ] `package-lock.json` (or `uv.lock`) is updated and committed
+- [ ] Dockerfile base image Node (or Python) version still matches local
+- [ ] `docker compose build frontend` (or `backend`) succeeds
+- [ ] App starts correctly in the container
+
+### Build Readiness Check
+
+**Every time code changes are detected in `frontend/` or `backend/`, you MUST perform a build readiness check before considering the task complete.** This applies to all changes — not just dependency updates.
+
+**Frontend (`frontend/`) — verify all of the following:**
+1. Every `import` in changed/new files resolves to a package in `package.json` or a local file that exists
+2. All referenced local components (`@/components/`, `@/hooks/`, `@/lib/`) exist
+3. `next.config.ts` still has `output: "standalone"` (required for Docker)
+4. `node:XX-alpine` in `frontend/Dockerfile` matches local Node major version
+5. `package-lock.json` lockfile version is compatible with the npm version in the Dockerfile
+
+**Backend (`backend/`) — verify all of the following:**
+1. Every `import` in changed/new files resolves to a package in `pyproject.toml` or a local module that exists
+2. New routes are registered in `app/main.py` via `app.include_router()`
+3. New modules have `__init__.py` files in their directories
+4. `uv.lock` is present and up to date
+5. `python:XX-slim` in `backend/Dockerfile` matches the required Python version in `pyproject.toml`
+
+**If any check fails, fix the issue before proceeding.**
+
 ## Architecture
 
 - **Backend:** Python 3.12+ / FastAPI — `backend/app/`

@@ -1,0 +1,157 @@
+ aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+
+
+ aws iam create-role --role-name arbiter-ai-github-actions --assume-role-policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [{
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::REDACTED:oidc-provider/token.actions.githubusercontent.com"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+          },
+          "StringLike": {
+            "token.actions.githubusercontent.com:sub": "repo:gndumbri/arbiter-ai:*"
+          }
+        }
+      }]
+    }'
+
+    aws iam put-role-policy --role-name arbiter-ai-github-actions --policy-name arbiter-ai-github-actions-deploy --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ecr:GetAuthorizationToken",
+            "ecr:BatchCheckLayerAvailability",
+            "ecr:GetDownloadUrlForLayer",
+            "ecr:BatchGetImage",
+            "ecr:PutImage",
+            "ecr:InitiateLayerUpload",
+            "ecr:UploadLayerPart",
+            "ecr:CompleteLayerUpload"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["ecs:UpdateService", "ecs:DescribeServices"],
+          "Resource": "arn:aws:ecs:us-east-1:REDACTED:service/arbiter-ai-cluster/*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": "ecs:DescribeServices",
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": "secretsmanager:GetSecretValue",
+          "Resource": "arn:aws:secretsmanager:us-east-1:REDACTED:secret:*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+          "Resource": [
+            "arn:aws:s3:::arbiter-ai-terraform-state",
+            "arn:aws:s3:::arbiter-ai-terraform-state/*"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": "dynamodb:*",
+          "Resource": "arn:aws:dynamodb:us-east-1:REDACTED:table/arbiter-ai-terraform-lock"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ec2:Describe*",
+            "elasticloadbalancing:Describe*",
+            "logs:*",
+            "iam:GetRole",
+            "iam:PassRole",
+            "iam:GetPolicy",
+            "iam:GetPolicyVersion",
+            "iam:ListAttachedRolePolicies",
+            "iam:ListRolePolicies",
+            "iam:GetRolePolicy"
+          ],
+          "Resource": "*"
+        }
+      ]
+    }'
+
+aws iam put-role-policy --role-name arbiter-ai-github-actions --policy-name arbiter-ai-github-actions-deploy --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ecr:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ecs:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "ec2:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "elasticloadbalancing:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "iam:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "logs:*"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "secretsmanager:GetSecretValue"
+          ],
+          "Resource": "*"
+        },
+        {
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:ListBucket"
+          ],
+          "Resource": [
+            "arn:aws:s3:::arbiter-ai-terraform-state",
+            "arn:aws:s3:::arbiter-ai-terraform-state/*"
+          ]
+        },
+        {
+          "Effect": "Allow",
+          "Action": "dynamodb:*",
+          "Resource": "arn:aws:dynamodb:us-east-1:REDACTED:table/arbiter-ai-terraform-lock"
+        }
+      ]
+    }'

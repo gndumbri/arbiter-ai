@@ -8,6 +8,10 @@ const withPWA = require("@ducanh2912/next-pwa").default({
 });
 
 const nextConfig: NextConfig = {
+  // WHY: 'standalone' creates a self-contained build (copies only needed
+  // node_modules files into .next/standalone). Required for Docker/ECS
+  // deployment where we want a minimal image without full node_modules.
+  output: "standalone",
   reactStrictMode: true,
   // WHY: 'standalone' creates a self-contained build (copies only needed
   // node_modules files into .next/standalone). Required for Docker/ECS
