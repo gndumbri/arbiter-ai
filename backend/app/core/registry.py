@@ -112,6 +112,10 @@ class ProviderRegistry:
             from app.core.providers import flashrank_reranker  # noqa: F401
         except ImportError:
             logger.debug("flashrank_reranker provider not available")
+        try:
+            from app.core.providers import pg_vector_store  # noqa: F401
+        except ImportError:
+            logger.debug("pg_vector_store provider not available")
 
     def _resolve(
         self,

@@ -1,6 +1,6 @@
 # Arbiter AI — Product Requirements Document (PRD)
 
-**Version:** 1.0 · **Status:** Active · **Last Updated:** 2026-02-14
+**Version:** 1.1 · **Status:** Active · **Last Updated:** 2026-02-15
 
 ---
 
@@ -101,15 +101,15 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 **User Story:** As a power user, I want to upgrade to PRO, save rulings, and share them with my gaming group.
 
-| Feature            | FREE             | PRO ($9.99/mo) |
-| ------------------ | ---------------- | -------------- |
-| Sessions           | 24-hour expiry   | 30-day expiry  |
-| Active rulesets    | 2                | 10             |
-| Max file size      | 25 MB            | 50 MB          |
-| Queries/day        | 5 (configurable) | Unlimited      |
-| Game library slots | 5                | Unlimited      |
-| Saved rulings      | ✅               | ✅             |
-| Party groups       | ✅               | ✅             |
+| Feature            | FREE             | PRO ($9.99/mo) | Enforced?       |
+| ------------------ | ---------------- | -------------- | --------------- |
+| Sessions           | 24-hour expiry   | 30-day expiry  | ✅ Backend      |
+| Active rulesets    | 2                | 10             | ⚠️ Aspirational |
+| Max file size      | 25 MB            | 50 MB          | ⚠️ Aspirational |
+| Queries/day        | 5 (configurable) | Unlimited      | ✅ Backend      |
+| Game library slots | 5                | Unlimited      | ⚠️ Aspirational |
+| Saved rulings      | ✅               | ✅             | ✅              |
+| Party groups       | ✅               | ✅             | ✅              |
 
 **Acceptance Criteria:**
 
@@ -137,19 +137,19 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 **User Story:** As a publisher, I want to create a custom AI referee agent and embed it on my website so customers can look up rules directly on my site.
 
-| Capability        | Behavior                                                |
-| ----------------- | ------------------------------------------------------- |
-| Agent Wizard      | 3-step setup: Identity → Knowledge → Behavior           |
-| Custom Persona    | Choose from presets or write custom system prompts      |
-| Embeddable Widget | `<script>` tag or iframe for external sites             |
-| Widget API        | Public endpoint with CORS for widget-to-backend queries |
+| Capability        | Behavior                                                                     |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Agent Wizard      | 3-step setup: Identity → Knowledge → Behavior                                |
+| Custom Persona    | Choose from presets or write custom system prompts                           |
+| Embeddable Widget | Frontend-rendered chat UI at `/widget/[id]` (Next.js page)                   |
+| Widget Backend    | Uses standard `/api/v1/judge` endpoint with CORS (no dedicated widget route) |
 
 **Acceptance Criteria:**
 
 - Agent wizard captures name, description, persona, and knowledge base
 - Agents are stored as Sessions with persona and system_prompt fields
-- Widget renders a standalone chat UI embeddable via `<script>` tag
-- Widget communicates with backend via `/widget/{id}` public endpoint
+- Widget renders a standalone chat UI accessible at `/widget/{id}`
+- Widget queries go through the standard `/api/v1/judge` endpoint
 
 ### F8: AWS Migration (Bedrock + FlashRank)
 
@@ -197,13 +197,14 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 ## Roadmap
 
-| Phase         | Status  | Key Deliverables                                                          |
-| ------------- | ------- | ------------------------------------------------------------------------- |
-| **Phase 1–3** | ✅ Done | Foundation, ingestion pipeline, adjudication engine                       |
-| **Phase 4**   | ✅ Done | Frontend PWA (landing, auth, library, chat)                               |
-| **Phase 5**   | ✅ Done | Publisher portal, official catalog, UI polish                             |
-| **Phase 6**   | ✅ Done | Auth, billing, admin, rulings, parties, rate limiting                     |
-| **Phase 7**   | ✅ Done | Agent builder wizard, embeddable widget                                   |
-| **Phase 8**   | ✅ Done | AWS Bedrock + FlashRank provider migration                                |
-| **Next**      | ✅ Done | Full Stripe checkout, production JWT, library API, publisher API key auth |
-| **Phase 10**  | Planned | MCP integration, extended test coverage, input sanitization               |
+| Phase         | Status  | Key Deliverables                                                                                                                                                      |
+| ------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Phase 1–3** | ✅ Done | Foundation, ingestion pipeline, adjudication engine                                                                                                                   |
+| **Phase 4**   | ✅ Done | Frontend PWA (landing, auth, library, chat)                                                                                                                           |
+| **Phase 5**   | ✅ Done | Publisher portal, official catalog, UI polish                                                                                                                         |
+| **Phase 6**   | ✅ Done | Auth, billing, admin, rulings, parties, rate limiting                                                                                                                 |
+| **Phase 7**   | ✅ Done | Agent builder wizard, embeddable widget                                                                                                                               |
+| **Phase 8**   | ✅ Done | AWS Bedrock + FlashRank provider migration                                                                                                                            |
+| **Phase 9**   | ✅ Done | Full Stripe checkout + portal, production JWT, library API, publisher API key auth                                                                                    |
+| **Phase 10**  | ✅ Done | Hybrid Catalog (3-tier: Open/Metadata/Custom), pgvector migration (replaces Pinecone), BGG Hot 50 + Open5e SRD data ingest, catalog search, legal provenance tracking |
+| **Phase 11**  | Planned | MCP integration, extended test coverage, input sanitization                                                                                                           |

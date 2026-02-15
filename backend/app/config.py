@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Provider selection — swap implementations via env var
     llm_provider: str = "openai"  # "openai" | "anthropic" | "bedrock"
     embedding_provider: str = "openai"  # "openai" | "bedrock"
-    vector_store_provider: str = "pinecone"  # "pinecone"
+    vector_store_provider: str = "pgvector"  # "pgvector" | "pinecone"
     reranker_provider: str = "cohere"  # "cohere" | "flashrank" | "none"
     parser_provider: str = "docling"  # "docling"
 

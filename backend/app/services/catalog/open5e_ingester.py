@@ -14,7 +14,7 @@ Pipeline:
     1. Fetch SRD sections from Open5e API
     2. Chunk text content into manageable pieces
     3. Generate embeddings via registry.get_embedder()
-    4. Upsert vectors into Pinecone under namespace "srd_dnd_5e"
+    4. Store as RuleChunk rows with pgvector embeddings (replaces Pinecone)
     5. Create/update OfficialRuleset with status=READY
 """
 
@@ -28,7 +28,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.tables import OfficialRuleset
+from app.models.tables import OfficialRuleset, RuleChunk
 
 logger = structlog.get_logger()
 
@@ -48,8 +48,8 @@ SRD_ATTRIBUTION = (
 _CHUNK_SIZE = 1500
 # Overlap between chunks to preserve context
 _CHUNK_OVERLAP = 200
-# Embedding batch size
-_EMBED_BATCH_SIZE = 50
+# Embedding batch size (Bedrock Titan limit)
+_EMBED_BATCH_SIZE = 25
 
 
 def _chunk_text(text: str, section_name: str) -> list[dict]:
@@ -127,7 +127,7 @@ async def sync_srd(db: AsyncSession, publisher_id: uuid.UUID) -> int:
     This function:
     1. Fetches D&D 5e SRD sections from Open5e
     2. Chunks text content
-    3. Attempts to embed and vectorize into Pinecone (graceful fallback)
+    3. Embeds and stores as RuleChunk rows with pgvector (replaces Pinecone)
     4. Creates/updates the SRD catalog entry
 
     Args:
@@ -150,101 +150,77 @@ async def sync_srd(db: AsyncSession, publisher_id: uuid.UUID) -> int:
 
     logger.info("open5e_chunks_created", total_chunks=len(all_chunks))
 
-    # 2. Try to vectorize (graceful fallback if Pinecone not configured)
-    chunk_count = 0
-    pinecone_namespace = ""
-    status = "UPLOAD_REQUIRED"  # Default: fallback if vectorization fails
-
-    try:
-        from app.core.registry import get_provider_registry
-
-        registry = get_provider_registry()
-        embedder = registry.get_embedder()
-        vector_store = registry.get_vector_store()
-
-        # Import VectorRecord for building upsert payloads
-        from app.core.protocols import VectorRecord
-
-        # Embed in batches
-        all_vectors: list[VectorRecord] = []
-        for i in range(0, len(all_chunks), _EMBED_BATCH_SIZE):
-            batch = all_chunks[i : i + _EMBED_BATCH_SIZE]
-            texts = [c["text"] for c in batch]
-
-            result = await embedder.embed_texts(texts)
-
-            for chunk, embedding in zip(batch, result.vectors):
-                record = VectorRecord(
-                    id=chunk["chunk_id"],
-                    vector=embedding,
-                    metadata={
-                        "text": chunk["text"][:1000],  # Pinecone metadata limit
-                        "section": chunk["section"],
-                        "chunk_index": chunk["chunk_index"],
-                        "game_name": SRD_GAME_NAME,
-                        "source_type": "OFFICIAL_SRD",
-                        "license": "CC-BY-4.0",
-                    },
-                )
-                all_vectors.append(record)
-
-        # Upsert all vectors to Pinecone
-        if all_vectors:
-            chunk_count = await vector_store.upsert(
-                all_vectors, namespace=SRD_NAMESPACE
-            )
-            pinecone_namespace = SRD_NAMESPACE
-            status = "READY"
-            logger.info(
-                "open5e_vectorized",
-                chunks=chunk_count,
-                namespace=SRD_NAMESPACE,
-            )
-
-    except Exception as e:
-        # Graceful fallback: if embedder or Pinecone isn't configured,
-        # we still create the catalog entry but with UPLOAD_REQUIRED status.
-        logger.warning(
-            "open5e_vectorization_skipped",
-            error=str(e),
-            reason="Pinecone or embedding provider not configured. "
-            "SRD will be listed but users must upload their own copy.",
-        )
-
-    # 3. Upsert the SRD catalog entry
+    # 2. Create/find the SRD catalog entry first (we need ruleset.id for chunks)
     existing = await db.execute(
         select(OfficialRuleset).where(OfficialRuleset.game_slug == SRD_SLUG)
     )
     srd_entry = existing.scalar_one_or_none()
 
     if srd_entry:
-        # Update existing entry
-        srd_entry.status = status
-        srd_entry.chunk_count = chunk_count
-        srd_entry.pinecone_namespace = pinecone_namespace or srd_entry.pinecone_namespace
-        srd_entry.license_type = "CC-BY-4.0"
-        srd_entry.is_crawlable = True
-        srd_entry.source_url = OPEN5E_SECTIONS_URL
-        srd_entry.attribution_text = SRD_ATTRIBUTION
-        logger.info("open5e_srd_updated", slug=SRD_SLUG, status=status)
+        # Check if already has chunks — skip if so (idempotent)
+        chunk_check = await db.execute(
+            select(RuleChunk.id).where(RuleChunk.ruleset_id == srd_entry.id).limit(1)
+        )
+        if chunk_check.scalar_one_or_none():
+            logger.info("open5e_srd_already_ingested", slug=SRD_SLUG)
+            return 0
     else:
-        # Create new entry
         srd_entry = OfficialRuleset(
             publisher_id=publisher_id,
             game_name=SRD_GAME_NAME,
             game_slug=SRD_SLUG,
             publisher_display_name="Wizards of the Coast (SRD)",
-            status=status,
+            status="PROCESSING",
             license_type="CC-BY-4.0",
             is_crawlable=True,
             source_url=OPEN5E_SECTIONS_URL,
             attribution_text=SRD_ATTRIBUTION,
-            pinecone_namespace=pinecone_namespace,
+            pinecone_namespace="",
             version="5.1 SRD",
-            chunk_count=chunk_count,
+            chunk_count=0,
         )
         db.add(srd_entry)
-        logger.info("open5e_srd_created", slug=SRD_SLUG, status=status)
+        await db.flush()
+
+    # 3. Embed and store as RuleChunk rows (pgvector, replaces Pinecone)
+    chunk_count = 0
+    try:
+        from app.core.registry import get_provider_registry
+
+        registry = get_provider_registry()
+        embedder = registry.get_embedder()
+
+        # Embed in batches
+        for i in range(0, len(all_chunks), _EMBED_BATCH_SIZE):
+            batch = all_chunks[i : i + _EMBED_BATCH_SIZE]
+            texts = [c["text"] for c in batch]
+
+            result = await embedder.embed_texts(texts)
+
+            for chunk, vector in zip(batch, result.vectors, strict=False):
+                db.add(RuleChunk(
+                    ruleset_id=srd_entry.id,
+                    chunk_index=chunk["chunk_index"],
+                    chunk_text=chunk["text"],
+                    section_header=chunk["section"],
+                    embedding=vector,
+                ))
+                chunk_count += 1
+
+        # Update ruleset to READY with chunk count
+        srd_entry.status = "READY"
+        srd_entry.chunk_count = chunk_count
+        logger.info("open5e_vectorized", chunks=chunk_count)
+
+    except Exception as e:
+        # Graceful fallback: if embedder isn't configured, we still create
+        # the catalog entry but leave it as PROCESSING (not READY).
+        logger.warning(
+            "open5e_vectorization_skipped",
+            error=str(e),
+            reason="Embedding provider not configured. "
+            "SRD entry created but requires manual embedding.",
+        )
 
     await db.flush()
     return chunk_count
