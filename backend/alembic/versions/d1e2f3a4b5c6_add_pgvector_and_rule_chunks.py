@@ -8,10 +8,10 @@ WHY: This migration enables Postgres-native vector storage (replaces Pinecone).
      Legal provenance columns were already added in 3e3eccf9015e.
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
+from alembic import op
 
 revision = "d1e2f3a4b5c6"
 down_revision = "c7d8e9f0a1b2"
@@ -20,15 +20,35 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # WHY: pgvector extension MUST be created before any Vector columns.
-    # Requires superuser or CREATE EXTENSION privilege on the database.
-    try:
-        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-    except Exception as exc:
-        raise RuntimeError(
-            "pgvector extension is not available on this Postgres instance. "
-            "Install/enable pgvector (or use a pgvector-enabled image) before running migrations."
-        ) from exc
+    # WHY: pgvector extension should exist before vector columns.
+    # In local environments where pgvector isn't installed, we gracefully
+    # fall back to TEXT so later schema migrations (auth/session features)
+    # are not blocked.
+    vector_enabled = True
+    bind = op.get_bind()
+    has_vector = bind.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector')")
+    ).scalar()
+
+    if has_vector:
+        try:
+            bind.execution_options(isolation_level="AUTOCOMMIT").execute(
+                sa.text("CREATE EXTENSION IF NOT EXISTS vector")
+            )
+        except Exception:
+            vector_enabled = False
+            print(
+                "WARNING: pgvector extension could not be enabled. "
+                "Creating rule_chunks.embedding as TEXT; vector similarity queries "
+                "will not work until pgvector is installed."
+            )
+    else:
+        vector_enabled = False
+        print(
+            "WARNING: pgvector extension is not available. "
+            "Creating rule_chunks.embedding as TEXT; vector similarity queries "
+            "will not work until pgvector is installed."
+        )
 
     # ── rule_chunks table with pgvector embedding ─────────────────────────
     op.create_table(
@@ -54,10 +74,14 @@ def upgrade() -> None:
         ),
     )
 
-    # WHY: The embedding column needs to be VECTOR type, not TEXT.
-    # We alter it after table creation because Alembic's create_table
-    # doesn't support the vector type natively.
-    op.execute("ALTER TABLE rule_chunks ALTER COLUMN embedding TYPE vector(1024) USING embedding::vector(1024)")
+    if vector_enabled:
+        # WHY: The embedding column needs to be VECTOR type, not TEXT.
+        # We alter it after table creation because Alembic's create_table
+        # doesn't support the vector type natively.
+        op.execute(
+            "ALTER TABLE rule_chunks ALTER COLUMN embedding TYPE vector(1024) "
+            "USING embedding::vector(1024)"
+        )
 
     # Index for fast similarity search filtered by ruleset
     op.create_index("ix_rule_chunks_ruleset_id", "rule_chunks", ["ruleset_id"])

@@ -159,6 +159,23 @@ class Settings(BaseSettings):
     # In AWS, mount this path on shared EFS if using Celery workers.
     uploads_dir: str = "/tmp/arbiter_uploads"
 
+    # ─── Catalog / Open-License Sync ────────────────────────────────────────
+    # Optional periodic background syncs (typically enabled in AWS production).
+    catalog_sync_enabled: bool = False
+    # Cron format for Celery Beat (minute hour day month day_of_week).
+    catalog_sync_cron: str = "15 */6 * * *"
+    # Maximum number of ranked BGG games to ingest each sync run.
+    catalog_ranked_game_limit: int = 1000
+    # Periodic ingestion of open-license rules text (Open5e -> pgvector).
+    open_rules_sync_enabled: bool = False
+    open_rules_sync_cron: str = "45 4 * * *"
+    # Cap documents per run for predictable token/embedding spend.
+    open_rules_max_documents: int = 20
+    # Comma-separated case-insensitive keyword filter over document license names.
+    open_rules_allowed_licenses: str = "creative commons,open gaming license,orc"
+    # If true, force rebuild chunks even when version/chunks look current.
+    open_rules_force_reindex: bool = False
+
     # ─── Model Defaults ──────────────────────────────────────────────────────
     # These are used when llm_provider=openai.  Bedrock model IDs are set above.
     llm_model: str = "gpt-4o"
@@ -194,6 +211,15 @@ class Settings(BaseSettings):
     def normalized_app_base_url(self) -> str:
         """Return APP_BASE_URL without a trailing slash."""
         return self.app_base_url.rstrip("/")
+
+    @property
+    def open_rules_allowed_licenses_list(self) -> list[str]:
+        """Return OPEN_RULES_ALLOWED_LICENSES as a normalized list."""
+        return [
+            part.strip()
+            for part in self.open_rules_allowed_licenses.split(",")
+            if part.strip()
+        ]
 
 
 @lru_cache

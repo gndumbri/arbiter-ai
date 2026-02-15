@@ -1,4 +1,4 @@
-.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down
+.PHONY: dev test test-backend test-frontend lint lint-backend lint-frontend migrate up down worker beat sync-catalog sync-open-rules
 
 # Start Docker services
 up:
@@ -46,3 +46,19 @@ frontend:
 # Start everything (requires tmux or multiple terminals)
 dev: up
 	@echo "Docker services started. Run 'make backend' and 'make frontend' in separate terminals."
+
+# Start Celery worker
+worker:
+	cd backend && uv run celery -A app.workers.celery_app worker --loglevel=info
+
+# Start Celery Beat scheduler
+beat:
+	cd backend && uv run celery -A app.workers.celery_app beat --loglevel=info
+
+# One-shot metadata sync (BGG hot + ranked)
+sync-catalog:
+	cd backend && uv run python -m scripts.sync_catalog_live
+
+# One-shot open-license rules sync (Open5e -> pgvector)
+sync-open-rules:
+	cd backend && uv run python -m scripts.sync_open_rules

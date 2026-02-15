@@ -37,6 +37,8 @@ class SessionCreate(BaseModel):
     game_name: str = Field(..., min_length=1, max_length=200)
     persona: str | None = None
     system_prompt_override: str | None = None
+    # Optional ready-to-use official ruleset namespaces for immediate judge access.
+    active_ruleset_ids: list[uuid.UUID] | None = None
 
 
 class SessionRead(BaseModel):

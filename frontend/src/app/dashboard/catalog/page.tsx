@@ -1,7 +1,7 @@
 /**
  * CatalogPage — Browse the full game catalog and add games to your library.
  *
- * The primary data source is GET /api/v1/catalog, which returns all 130+
+ * The primary data source is GET /api/v1/catalog, which returns all 1000+
  * games seeded into the database by scripts/seed_catalog.py. A small
  * FALLBACK_GAMES list is only shown when the backend is unreachable.
  *
@@ -21,20 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { api, CatalogEntry } from "@/lib/api";
-
-/**
- * Fallback games shown only when the backend catalog is unavailable.
- * Slugs match the DB seed exactly so deduplication works correctly.
- * The real catalog lives in the database (see scripts/seed_catalog.py).
- */
-const FALLBACK_GAMES: CatalogEntry[] = [
-  { id: "common-dnd5e",       game_name: "Dungeons & Dragons 5th Edition", game_slug: "dnd-5e",           publisher_name: "Wizards of the Coast", version: "2024",   status: "UPLOAD_REQUIRED" },
-  { id: "common-pathfinder2e", game_name: "Pathfinder 2nd Edition",        game_slug: "pathfinder-2e",     publisher_name: "Paizo",                version: "Remaster", status: "UPLOAD_REQUIRED" },
-  { id: "common-mtg",         game_name: "Magic: The Gathering",           game_slug: "mtg",               publisher_name: "Wizards of the Coast", version: "2024",   status: "UPLOAD_REQUIRED" },
-  { id: "common-catan",       game_name: "Catan (6th Ed)",                 game_slug: "catan-6e",          publisher_name: "Catan Studio",         version: "6th Ed", status: "UPLOAD_REQUIRED" },
-  { id: "common-warhammer40k",game_name: "Warhammer 40,000 (10th Ed)",     game_slug: "warhammer-40k-10",  publisher_name: "Games Workshop",       version: "10th Ed", status: "UPLOAD_REQUIRED" },
-  { id: "common-pandemic",    game_name: "Pandemic",                       game_slug: "pandemic",          publisher_name: "Z-Man Games",          version: "2020",   status: "UPLOAD_REQUIRED" },
-];
+import { FALLBACK_CATALOG_GAMES } from "@/lib/catalogFallback";
 
 function normalizeGameKey(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -70,7 +57,7 @@ export default function CatalogPage() {
   // Backend catalog is the source of truth; fallbacks fill in only when backend is down
   const allGames: CatalogEntry[] = backendCatalog && backendCatalog.length > 0
     ? backendCatalog
-    : FALLBACK_GAMES;
+    : FALLBACK_CATALOG_GAMES;
 
   const filtered = allGames.filter(
     (g) =>
@@ -163,7 +150,7 @@ export default function CatalogPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">The Armory</h1>
           <p className="text-muted-foreground mt-1">
-            Browse 130+ games. Claim the ones you play.
+            Browse 1000+ games. Claim the ones you play.
           </p>
         </div>
       </div>

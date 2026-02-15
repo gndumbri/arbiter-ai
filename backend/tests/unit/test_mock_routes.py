@@ -120,6 +120,22 @@ async def test_mock_create_session(mock_client: AsyncClient):
     assert "id" in data
 
 
+@pytest.mark.anyio
+async def test_mock_get_session(mock_client: AsyncClient):
+    """Mock GET /sessions/{id} should return detail for known session."""
+    list_resp = await mock_client.get("/api/v1/sessions")
+    assert list_resp.status_code == 200
+    sessions = list_resp.json()
+    assert len(sessions) > 0
+
+    session_id = sessions[0]["id"]
+    detail_resp = await mock_client.get(f"/api/v1/sessions/{session_id}")
+    assert detail_resp.status_code == 200
+    detail = detail_resp.json()
+    assert detail["id"] == session_id
+    assert "game_name" in detail
+
+
 # ─── Judge ────────────────────────────────────────────────────────────────────
 
 

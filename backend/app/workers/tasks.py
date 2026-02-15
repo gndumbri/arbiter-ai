@@ -5,16 +5,19 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import uuid
 from pathlib import Path
 from uuid import UUID
 
 from celery import shared_task
-from sqlalchemy import update
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.config import get_settings
 from app.core.ingestion import IngestionPipeline
 from app.core.registry import get_provider_registry
 from app.models.database import get_async_session
-from app.models.tables import RulesetMetadata
+from app.models.tables import Publisher, RulesetMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -120,4 +123,104 @@ def ingest_ruleset(
         # Retry only on specific transient errors if needed
         # For now, just fail hard to avoid infinite loops on bad PDFs
         # raise self.retry(exc=exc, countdown=60) if False else exc
+        raise exc from exc
+
+
+async def _ensure_community_publisher(db) -> Publisher:
+    existing = await db.execute(select(Publisher).where(Publisher.slug == "community"))
+    publisher = existing.scalar_one_or_none()
+    if publisher is not None:
+        return publisher
+
+    publisher = Publisher(
+        id=uuid.uuid4(),
+        name="Community Catalog",
+        slug="community",
+        contact_email="support@arbiter-ai.com",
+        api_key_hash="system_sync_placeholder",
+        verified=True,
+    )
+    db.add(publisher)
+    await db.flush()
+    return publisher
+
+
+async def _run_catalog_metadata_sync() -> dict:
+    """Sync metadata catalog sources (BGG hot + ranked)."""
+    settings = get_settings()
+    if not settings.catalog_sync_enabled:
+        return {"status": "skipped", "reason": "CATALOG_SYNC_ENABLED=false"}
+
+    from app.services.catalog.bgg_fetcher import sync_ranked_games, sync_top_games
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as db:
+            publisher = await _ensure_community_publisher(db)
+            hot_created = await sync_top_games(db, publisher.id)
+            ranked_created = await sync_ranked_games(
+                db,
+                publisher.id,
+                limit=settings.catalog_ranked_game_limit,
+            )
+            await db.commit()
+            return {
+                "status": "ok",
+                "hot_created": hot_created,
+                "ranked_created": ranked_created,
+                "ranked_limit": settings.catalog_ranked_game_limit,
+            }
+    finally:
+        await engine.dispose()
+
+
+async def _run_open_rules_sync() -> dict:
+    """Sync open-license rules content into vectorized rule_chunks."""
+    settings = get_settings()
+    if not settings.open_rules_sync_enabled:
+        return {"status": "skipped", "reason": "OPEN_RULES_SYNC_ENABLED=false"}
+
+    from app.services.catalog.open5e_ingester import sync_open_licensed_documents
+
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with session_factory() as db:
+            publisher = await _ensure_community_publisher(db)
+            stats = await sync_open_licensed_documents(
+                db,
+                publisher.id,
+                max_documents=settings.open_rules_max_documents,
+                allowed_license_keywords=settings.open_rules_allowed_licenses_list,
+                force_reindex=settings.open_rules_force_reindex,
+            )
+            return {"status": "ok", **stats}
+    finally:
+        await engine.dispose()
+
+
+@shared_task(bind=True, max_retries=1)
+def sync_catalog_metadata(self) -> dict:
+    """Periodic Celery task: sync game metadata catalog sources."""
+    try:
+        result = asyncio.run(_run_catalog_metadata_sync())
+        logger.info("catalog_metadata_sync_complete", extra=result)
+        return result
+    except Exception as exc:
+        logger.exception("catalog_metadata_sync_failed")
+        raise exc from exc
+
+
+@shared_task(bind=True, max_retries=1)
+def sync_open_license_rules(self) -> dict:
+    """Periodic Celery task: ingest open-license rules into vectors."""
+    try:
+        result = asyncio.run(_run_open_rules_sync())
+        logger.info("open_rules_sync_complete", extra=result)
+        return result
+    except Exception as exc:
+        logger.exception("open_rules_sync_failed")
         raise exc from exc

@@ -11,7 +11,7 @@
 | Layer           | Technology                     | Version   | Purpose                                             |
 | --------------- | ------------------------------ | --------- | --------------------------------------------------- |
 | **API**         | FastAPI                        | 0.110+    | REST API, async request handling                    |
-| **Task Queue**  | Celery + Redis                 | 5.3+ / 7+ | Async ingestion, scheduled cleanup                  |
+| **Task Queue**  | Celery + Redis                 | 5.3+ / 7+ | Async ingestion + scheduled catalog/rules sync      |
 | **Database**    | PostgreSQL                     | 16        | Relational data, user accounts                      |
 | **ORM**         | SQLAlchemy                     | 2.0+      | Database models and queries                         |
 | **Migrations**  | Alembic                        | 1.13+     | Schema versioning                                   |
@@ -49,7 +49,14 @@
                                 ┌──────────▼───────────┐
                                 │ Celery Worker Service │
                                 │ - PDF ingestion       │
+                                │ - Rules sync indexing │
                                 │ - Direct DB access    │
+                                └───────────────────────┘
+                                           │
+                                ┌──────────▼───────────┐
+                                │ Celery Beat Service   │
+                                │ - Catalog sync cron   │
+                                │ - Open-rules sync cron│
                                 └───────────────────────┘
 ```
 
@@ -68,11 +75,29 @@
 - Verdict generation now includes robust JSON extraction/normalization (including fenced JSON parsing, confidence clamping, and structured fallback behavior).
 - Judge now accepts model-selected `citation_chunk_indexes` to align returned citations with the exact evidence used.
 - Judge requests now carry recent chat turns (`history`) so follow-up questions are interpreted with conversation continuity.
+- Session/agent creation now degrades gracefully if Redis rate-limit backend is unavailable (fail-open with warning logs) to preserve app availability.
+- Frontend API errors now unwrap nested backend detail payloads so agent-creation failures show actionable messages instead of generic errors.
+- Settings account deletion now uses a multi-step branded warning dialog with escalating confirmations and a typed final confirmation (`RETIRE`).
+- CORS middleware now wraps the full backend middleware stack so `Access-Control-Allow-Origin` is still returned on auth/rate-limit/error responses (prevents false browser CORS failures during session/agent creation).
+- Root layout now suppresses extension-driven body hydration attribute mismatches during local development.
+- Catalog API now returns both `UPLOAD_REQUIRED` and READY statuses for verified publishers, so seeded Armory metadata titles appear in search/list responses.
+- Add Game (shelf) dialog now preloads Armory catalog entries on open and falls back to local defaults, instead of waiting for 2+ character search input.
+- Session creation now accepts optional `active_ruleset_ids`, and Judge resolves those official READY namespaces alongside uploaded rulesets.
+- Alembic migration for pgvector now degrades gracefully on Postgres instances without the `vector` extension (uses TEXT embedding column and unblocks later migrations).
+- New schema drift guard migration ensures `sessions.persona` and `sessions.system_prompt_override` columns exist in local/dev databases.
+- Added backend API regression coverage for `GET /api/v1/agents` and judge official-ruleset namespace resolution to prevent future agent-creation/list regressions.
 - Ingestion rulebook classification now uses structured JSON output plus a confidence threshold for stricter acceptance quality.
 - Backend static checks now pass for both `app/` and `tests/` with `ruff`; pytest warning filter added for known asyncpg cleanup noise.
 - Root `make lint` now executes ruff plus targeted mypy checks via `uv run --with mypy`, removing local tooling drift.
 - Root `make test` and `make lint` now include both backend and frontend checks, with `make test-backend` / `make test-frontend` split targets for focused runs.
 - ECS backend task-definition baseline is now versioned at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
+- BGG ingestion now supports ranked browse sync (configurable top-N, default 1000) to keep Armory broadly populated.
+- Open5e ingestion now supports multi-document open-license sync (CC/OGL/ORC) with scheduled Celery Beat jobs for production refresh.
+- Added one-shot maintenance scripts for production-safe sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
+- Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).
+- Ask/chat UI width now uses tighter max-width containers to avoid over-stretched desktop layouts.
+- Added `GET /api/v1/sessions/{id}` for reliable single-session metadata fetch (game, persona, prompt override) in chat surfaces.
+- New session creation wizard now captures game name separately from NPC identity, so game association remains accurate in Ask listings and chat context.
 
 ---
 
@@ -554,6 +579,7 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 12. Agent prompt layering: persona/style overrides are applied without allowing grounding-rule bypass
 13. Verdict JSON resilience: fenced/partial JSON is parsed and normalized safely
 14. Follow-up continuity: recent chat history improves pronoun/ellipsis disambiguation without bypassing retrieval grounding
+15. Rate-limit resilience: Redis limiter outages do not block session creation paths
 
 ---
 
@@ -686,6 +712,16 @@ APP_MODE=sandbox    # mock | sandbox | production
 ALLOWED_ORIGINS=http://localhost:3000
 APP_BASE_URL=http://localhost:3000
 TRUSTED_PROXY_HOPS=0
+
+# Optional scheduled catalog/rules refresh
+CATALOG_SYNC_ENABLED=true
+CATALOG_SYNC_CRON=15 */6 * * *
+CATALOG_RANKED_GAME_LIMIT=1000
+OPEN_RULES_SYNC_ENABLED=true
+OPEN_RULES_SYNC_CRON=45 4 * * *
+OPEN_RULES_MAX_DOCUMENTS=20
+OPEN_RULES_ALLOWED_LICENSES=creative commons,open gaming license,orc
+OPEN_RULES_FORCE_REINDEX=false
 ```
 
 Environment-specific templates:

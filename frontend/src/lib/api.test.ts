@@ -61,4 +61,15 @@ describe("fetcher", () => {
 
     await expect(fetcher("/judge", { method: "POST" })).rejects.toThrow("Bad request");
   });
+
+  it("throws nested backend message when detail is an object", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: { code: "RATE_LIMITED", message: "Try again later." } }), {
+        status: 429,
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetcher("/sessions", { method: "POST" })).rejects.toThrow("Try again later.");
+  });
 });

@@ -144,7 +144,11 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if not settings.is_production else None,
     )
 
-    # CORS
+    # Custom middleware (logging, rate limiting, etc.)
+    register_middleware(app)
+
+    # CORS must be outermost so headers are present even when inner
+    # middleware short-circuits (e.g., rate limit/auth errors).
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
@@ -152,9 +156,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # Custom middleware (logging, rate limiting, etc.)
-    register_middleware(app)
 
     # ─── Route Selection ──────────────────────────────────────────────────
     # WHY: In mock mode we skip importing real routes entirely, which

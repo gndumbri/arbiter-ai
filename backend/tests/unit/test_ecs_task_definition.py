@@ -53,3 +53,14 @@ def test_backend_taskdef_uses_bedrock_pgvector_defaults() -> None:
     assert env_map.get("EMBEDDING_PROVIDER") == "bedrock"
     assert env_map.get("VECTOR_STORE_PROVIDER") == "pgvector"
     assert env_map.get("RERANKER_PROVIDER") == "flashrank"
+
+
+def test_backend_taskdef_enables_periodic_catalog_and_rules_sync() -> None:
+    taskdef = _load_backend_taskdef()
+    environment = taskdef["containerDefinitions"][0].get("environment", [])
+    env_map = {item["name"]: item["value"] for item in environment}
+
+    assert env_map.get("CATALOG_SYNC_ENABLED") == "true"
+    assert env_map.get("OPEN_RULES_SYNC_ENABLED") == "true"
+    assert env_map.get("CATALOG_RANKED_GAME_LIMIT") == "1000"
+    assert env_map.get("OPEN_RULES_MAX_DOCUMENTS") == "20"

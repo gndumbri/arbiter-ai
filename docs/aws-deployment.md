@@ -180,7 +180,15 @@ aws secretsmanager create-secret \
     "APP_BASE_URL": "https://arbiter-ai.com",
     "TRUSTED_PROXY_HOPS": "1",
     "APP_ENV": "production",
-    "LOG_LEVEL": "INFO"
+    "LOG_LEVEL": "INFO",
+    "CATALOG_SYNC_ENABLED": "true",
+    "CATALOG_SYNC_CRON": "15 */6 * * *",
+    "CATALOG_RANKED_GAME_LIMIT": "1000",
+    "OPEN_RULES_SYNC_ENABLED": "true",
+    "OPEN_RULES_SYNC_CRON": "45 4 * * *",
+    "OPEN_RULES_MAX_DOCUMENTS": "20",
+    "OPEN_RULES_ALLOWED_LICENSES": "creative commons,open gaming license,orc",
+    "OPEN_RULES_FORCE_REINDEX": "false"
   }'
 ```
 
@@ -274,10 +282,28 @@ Backend (Bedrock + pgvector) should only map keys you actually use, for example:
     { "name": "LLM_PROVIDER", "value": "bedrock" },
     { "name": "EMBEDDING_PROVIDER", "value": "bedrock" },
     { "name": "VECTOR_STORE_PROVIDER", "value": "pgvector" },
-    { "name": "RERANKER_PROVIDER", "value": "flashrank" }
+    { "name": "RERANKER_PROVIDER", "value": "flashrank" },
+    { "name": "CATALOG_SYNC_ENABLED", "value": "true" },
+    { "name": "CATALOG_SYNC_CRON", "value": "15 */6 * * *" },
+    { "name": "CATALOG_RANKED_GAME_LIMIT", "value": "1000" },
+    { "name": "OPEN_RULES_SYNC_ENABLED", "value": "true" },
+    { "name": "OPEN_RULES_SYNC_CRON", "value": "45 4 * * *" },
+    { "name": "OPEN_RULES_MAX_DOCUMENTS", "value": "20" },
+    { "name": "OPEN_RULES_ALLOWED_LICENSES", "value": "creative commons,open gaming license,orc" }
   ]
 }
 ```
+
+### 3d. Run Worker + Beat Services
+
+Use separate ECS services for:
+
+- `backend-api` (FastAPI)
+- `backend-worker` (`celery -A app.workers.celery_app worker --loglevel=info`)
+- `backend-beat` (`celery -A app.workers.celery_app beat --loglevel=info`)
+
+`backend-worker` processes PDF ingestion and open-license rules embedding.  
+`backend-beat` schedules periodic catalog and open-rules sync tasks.
 
 ---
 
@@ -320,7 +346,7 @@ Configure Stripe to send webhook events to your production URL:
 
 | Service               | Spec                    | Est. Cost      |
 | --------------------- | ----------------------- | -------------- |
-| ECS Fargate (2 tasks) | 0.75 vCPU, 1.5 GB total | ~$25           |
+| ECS Fargate (3 tasks) | API + Worker + Beat     | ~$33           |
 | RDS PostgreSQL        | db.t4g.micro, 20 GB     | ~$15           |
 | ElastiCache Redis     | cache.t4g.micro         | ~$12           |
 | ALB                   | Standard                | ~$16           |
@@ -387,6 +413,7 @@ jobs:
 - [ ] All secrets stored in Secrets Manager
 - [ ] ECR images built and pushed
 - [ ] ECS services running and healthy
+- [ ] Worker + Beat services running and healthy
 - [ ] ALB routing `/api/*` → backend, `/*` → frontend
 - [ ] ACM certificate issued and attached to ALB
 - [ ] Route 53 A record pointing to ALB
@@ -394,4 +421,5 @@ jobs:
 - [ ] Stripe webhook configured with production URL
 - [ ] `APP_ENV=production` set in Secrets Manager
 - [ ] `ALLOWED_ORIGINS` set to production domain
+- [ ] `CATALOG_SYNC_ENABLED=true` and `OPEN_RULES_SYNC_ENABLED=true` for automatic refresh
 - [ ] Smoke test: hit `/health`, `/api/v1/catalog/`, sign in, run a query

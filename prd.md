@@ -49,8 +49,25 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Judge quality flow was upgraded with stronger grounding prompts, robust JSON normalization, and citation-chunk alignment to improve reliability under real gameplay queries.
 - Agent quality flow now applies persona + custom system instructions directly in adjudication while preserving non-overridable safety/grounding constraints.
 - Judge flow now includes recent-turn conversation context for higher-quality follow-up rulings (without relaxing citation grounding rules).
+- Agent/session creation now stays available during Redis rate-limiter outages (degraded fail-open behavior with warnings), reducing false-create failures.
+- Frontend now surfaces backend error messages cleanly (including structured rate-limit payloads) during agent creation.
+- Account deletion UX now includes a multi-step, on-brand danger flow with escalating warnings and typed confirmation before irreversible deletion.
+- Backend CORS ordering was corrected so browser clients receive CORS headers even on middleware short-circuit responses (rate-limit/auth/errors), fixing agent/session create calls that appeared as CORS failures.
+- Root layout now suppresses browser-extension hydration class drift warnings to reduce false-positive React hydration noise in dev.
+- Catalog browse/search now includes metadata-only `UPLOAD_REQUIRED` games (not just indexed ones), restoring full Armory discovery from seeded data.
+- Shelf "Add Game" flow now preloads Armory entries immediately and keeps a local fallback list, so users see selectable games before typing.
+- Session/Judge flow now supports official READY catalog namespaces via `active_ruleset_ids`, enabling no-upload chat when official indexed content exists.
+- Alembic migration flow now avoids blocking on missing pgvector extension in local DBs, and a drift-fix migration guarantees session persona columns exist.
+- New backend regression tests now cover agent listing and official-ruleset judge namespace wiring (`backend/tests/api/routes/test_agents.py`, `backend/tests/api/routes/test_judge_official_rulesets.py`).
 - Ingestion classification prompt now uses structured JSON + confidence gating to reduce non-rulebook acceptance and improve corpus quality.
 - New regression tests now cover adjudication prompt flow and ingestion classifier parsing (`backend/tests/unit/test_adjudication.py`, `backend/tests/unit/test_ingestion_classification.py`).
+- Armory catalog ingestion now supports BoardGameGeek ranked browse sync (configurable top-N, default 1000) for broader out-of-box game coverage.
+- Open-license rules ingestion now supports multi-document Open5e sync (CC/OGL/ORC), including scheduled production refresh via Celery Beat.
+- New maintenance commands were added for deterministic sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
+- Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.
+- Ask and chat layouts now use tighter max-width containers for improved readability on large screens.
+- Session setup flow now enforces explicit game selection while preserving separate NPC identity/persona fields, preventing mislabeled chats.
+- API now supports direct session metadata lookup by ID for more reliable game-context rendering in Ask/chat views.
 
 ### F1: Game Library (Dashboard)
 

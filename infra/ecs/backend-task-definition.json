@@ -30,7 +30,15 @@
         { "name": "EMBEDDING_PROVIDER", "value": "bedrock" },
         { "name": "VECTOR_STORE_PROVIDER", "value": "pgvector" },
         { "name": "RERANKER_PROVIDER", "value": "flashrank" },
-        { "name": "PARSER_PROVIDER", "value": "docling" }
+        { "name": "PARSER_PROVIDER", "value": "docling" },
+        { "name": "CATALOG_SYNC_ENABLED", "value": "true" },
+        { "name": "CATALOG_SYNC_CRON", "value": "15 */6 * * *" },
+        { "name": "CATALOG_RANKED_GAME_LIMIT", "value": "1000" },
+        { "name": "OPEN_RULES_SYNC_ENABLED", "value": "true" },
+        { "name": "OPEN_RULES_SYNC_CRON", "value": "45 4 * * *" },
+        { "name": "OPEN_RULES_MAX_DOCUMENTS", "value": "20" },
+        { "name": "OPEN_RULES_ALLOWED_LICENSES", "value": "creative commons,open gaming license,orc" },
+        { "name": "OPEN_RULES_FORCE_REINDEX", "value": "false" }
       ],
       "secrets": [
         {

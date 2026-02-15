@@ -58,6 +58,20 @@ def test_allowed_origins_fallback_to_app_base_url():
     assert settings.allowed_origins_list == ["https://app.example.com"]
 
 
+def test_open_rules_allowed_licenses_list_parsing():
+    """OPEN_RULES_ALLOWED_LICENSES should parse into a trimmed list."""
+    settings = Settings(
+        _env_file=None,
+        open_rules_allowed_licenses="creative commons, ogl, orc ",
+        database_url="postgresql+asyncpg://test:test@localhost/test",
+    )
+    assert settings.open_rules_allowed_licenses_list == [
+        "creative commons",
+        "ogl",
+        "orc",
+    ]
+
+
 def test_get_settings_returns_singleton():
     """get_settings should return the same instance on repeated calls."""
     s1 = get_settings()

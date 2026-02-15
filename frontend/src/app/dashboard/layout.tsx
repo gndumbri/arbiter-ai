@@ -25,7 +25,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="border-b border-border/40 bg-background/95 backdrop-blur-sm sticky top-0 z-50">
-        <div className="mx-auto flex h-14 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-5xl items-center px-4 sm:px-6 lg:px-8">
           <Link
             href="/dashboard"
             className="flex items-center space-x-2 font-bold text-primary hover:text-primary/80 transition-colors shrink-0"
@@ -66,7 +66,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </div>
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6">
+      <main className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-6">
         {children}
       </main>
       {/* WHY: EnvironmentBadge is positioned fixed (bottom-left) and

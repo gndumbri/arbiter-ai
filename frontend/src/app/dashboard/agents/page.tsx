@@ -25,7 +25,7 @@ export default function AgentsPage() {
         <Button asChild className="w-full sm:w-auto">
           <Link href="/dashboard/agents/new">
             <Plus className="mr-2 h-4 w-4" />
-            New Question
+            New Session
           </Link>
         </Button>
       </div>
@@ -70,11 +70,25 @@ export default function AgentsPage() {
                 </CardHeader>
                 <CardContent className="flex-1">
                   <div className="text-sm text-muted-foreground space-y-2">
+                    <p className="text-xs">
+                      <span className="font-medium text-foreground">Game:</span>{" "}
+                      <span className="truncate">{agent.game_name}</span>
+                    </p>
                     {agent.persona && (
-                      <p className="line-clamp-2 text-xs italic">
-                        &quot;{agent.persona}&quot;
+                      <p className="line-clamp-2 text-xs">
+                        <span className="font-medium text-foreground">NPC Persona:</span>{" "}
+                        <span className="italic">&quot;{agent.persona}&quot;</span>
                       </p>
                     )}
+                    {!agent.persona && (
+                      <p className="text-xs">
+                        <span className="font-medium text-foreground">NPC Persona:</span> Default Arbiter
+                      </p>
+                    )}
+                    <p className="text-xs">
+                      <span className="font-medium text-foreground">Linked rulesets:</span>{" "}
+                      {agent.active_ruleset_ids?.length ?? 0}
+                    </p>
                     <p className="text-xs">
                        Created {formatDistanceToNow(new Date(agent.created_at), { addSuffix: true })}
                     </p>

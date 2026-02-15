@@ -139,6 +139,16 @@ export interface Agent {
   active_ruleset_ids: string[] | null;
 }
 
+export interface SessionSummary {
+  id: string;
+  game_name: string;
+  persona: string | null;
+  system_prompt_override: string | null;
+  active_ruleset_ids: string[] | null;
+  created_at: string;
+  expires_at: string;
+}
+
 export interface LibraryEntry {
   id: string;
   game_name: string;
@@ -194,8 +204,28 @@ export async function fetcher<T>(url: string, options?: RequestInit): Promise<T>
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "An error occurred" }));
-    throw new Error(error.detail || `Error ${res.status}`);
+    const error = await res.json().catch(() => null);
+    const detail = error?.detail ?? error?.error ?? error;
+
+    let message = `Error ${res.status}`;
+    if (typeof detail === "string" && detail.trim()) {
+      message = detail;
+    } else if (detail && typeof detail === "object") {
+      const detailObj = detail as {
+        message?: unknown;
+        detail?: unknown;
+        code?: unknown;
+      };
+      if (typeof detailObj.message === "string" && detailObj.message.trim()) {
+        message = detailObj.message;
+      } else if (typeof detailObj.detail === "string" && detailObj.detail.trim()) {
+        message = detailObj.detail;
+      } else if (typeof detailObj.code === "string" && detailObj.code.trim()) {
+        message = detailObj.code;
+      }
+    }
+
+    throw new Error(message);
   }
 
   // 204/205 responses intentionally have no body.
@@ -239,7 +269,12 @@ async function fetchMultipart<T>(url: string, formData: FormData): Promise<T> {
 
 export const api = {
   // ─── Sessions ───────────────────────────────────────────────────────────────
-  createSession: async (data: { game_name: string; persona?: string; system_prompt_override?: string }) => {
+  createSession: async (data: {
+    game_name: string;
+    persona?: string;
+    system_prompt_override?: string;
+    active_ruleset_ids?: string[];
+  }) => {
     return fetcher<{ id: string; game_name: string }>("/sessions", {
       method: "POST",
       body: JSON.stringify(data),
@@ -247,7 +282,11 @@ export const api = {
   },
 
   listSessions: async () => {
-    return fetcher<{ id: string; game_name: string; created_at: string; expires_at: string }[]>("/sessions");
+    return fetcher<SessionSummary[]>("/sessions");
+  },
+
+  getSession: async (sessionId: string) => {
+    return fetcher<SessionSummary>(`/sessions/${sessionId}`);
   },
 
   // ─── Rulesets ───────────────────────────────────────────────────────────────

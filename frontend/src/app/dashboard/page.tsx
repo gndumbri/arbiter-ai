@@ -1,31 +1,56 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { formatDistanceToNow } from "date-fns";
-import { Loader2, MessageSquare, FileText, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, MessageSquare, FileText, CheckCircle, AlertCircle, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RulesetUploadDialog } from "@/components/dashboard/RulesetUploadDialog";
 import { api } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
   const { data: rulesets, error, isLoading } = useSWR("rulesets", api.listRulesets, {
     refreshInterval: 5000, 
   });
-  const { data: libraryEntries } = useSWR("library", api.listLibrary, { onError: () => {} });
+  const { data: libraryEntries, mutate: mutateLibrary } = useSWR("library", api.listLibrary, { onError: () => {} });
+  const [removingEntryId, setRemovingEntryId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Fetch recent sessions for "Continue" section
   const { data: agents } = useSWR("agents", api.listAgents, { onError: () => {} });
-  const recentGames = agents
+  const recentSessions = agents
     ? agents
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        // Deduplicate by game_name — show most recent session per game
-        .filter((a, i, arr) => arr.findIndex((x) => x.game_name === a.game_name) === i)
         .slice(0, 4)
     : [];
+
+  const handleRemoveFromShelf = async (entryId: string, gameName: string) => {
+    if (removingEntryId) return;
+
+    setRemovingEntryId(entryId);
+    try {
+      await api.removeFromLibrary(entryId);
+      await mutateLibrary();
+      toast({
+        title: "Removed from shelf",
+        description: `${gameName} has been removed from your shelf.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to remove game.";
+      toast({
+        title: "Could not remove game",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setRemovingEntryId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -38,11 +63,11 @@ export default function DashboardPage() {
       </div>
 
       {/* ─── Recent Games — Continue where you left off ──────────────── */}
-      {recentGames.length > 0 && (
+      {recentSessions.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-muted-foreground">Continue Asking</h3>
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-            {recentGames.map((agent) => (
+            {recentSessions.map((agent) => (
               <Link
                 key={agent.id}
                 href={`/session/${agent.id}`}
@@ -51,6 +76,9 @@ export default function DashboardPage() {
                 <MessageSquare className="h-4 w-4 text-primary shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">{agent.game_name}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {agent.persona || "Default Arbiter"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDistanceToNow(new Date(agent.created_at), { addSuffix: true })}
                   </p>
@@ -67,8 +95,25 @@ export default function DashboardPage() {
           <h3 className="text-lg font-semibold text-muted-foreground">Games on Your Shelf</h3>
           <div className="flex flex-wrap gap-2">
             {libraryEntries.slice(0, 10).map((entry) => (
-              <Badge key={entry.id} variant={entry.favorite ? "default" : "secondary"}>
-                {entry.game_name}
+              <Badge
+                key={entry.id}
+                variant={entry.favorite ? "default" : "secondary"}
+                className="gap-1 pr-1"
+              >
+                <span>{entry.game_name}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveFromShelf(entry.id, entry.game_name)}
+                  aria-label={`Remove ${entry.game_name} from shelf`}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-sm hover:bg-black/10 focus:outline-none focus:ring-1 focus:ring-ring"
+                  disabled={removingEntryId === entry.id}
+                >
+                  {removingEntryId === entry.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <X className="h-3 w-3" />
+                  )}
+                </button>
               </Badge>
             ))}
           </div>

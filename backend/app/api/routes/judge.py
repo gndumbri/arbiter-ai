@@ -41,10 +41,20 @@ from app.models.schemas import (
     VerdictCitation,
     VerdictConflict,
 )
-from app.models.tables import QueryAuditLog, RulesetMetadata, Session, Subscription, SubscriptionTier
+from app.models.tables import (
+    OfficialRuleset,
+    Publisher,
+    QueryAuditLog,
+    RulesetMetadata,
+    Session,
+    Subscription,
+    SubscriptionTier,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["judge"])
 logger = structlog.get_logger()
+
+READY_CATALOG_STATUSES = ("READY", "INDEXED", "COMPLETE", "PUBLISHED")
 
 
 @router.post("/judge", response_model=JudgeVerdict)
@@ -82,6 +92,7 @@ async def submit_query(
     session_game_name: str | None = None
     session_persona: str | None = None
     session_system_prompt_override: str | None = None
+    session_active_official_ruleset_ids: list[uuid.UUID] = []
 
     if body.session_id:
         session_result = await db.execute(
@@ -106,10 +117,17 @@ async def submit_query(
         session_game_name = session_record.game_name
         session_persona = session_record.persona
         session_system_prompt_override = session_record.system_prompt_override
+        if isinstance(session_record.active_ruleset_ids, list):
+            session_active_official_ruleset_ids = session_record.active_ruleset_ids
 
     # ── 2. Resolve vector namespaces from session's rulesets ───────────────
     # WHY: In pgvector, namespace is the ruleset UUID string.
     namespaces: list[str] = []
+    requested_namespace_ids = (
+        {str(rid) for rid in body.ruleset_ids}
+        if body.ruleset_ids
+        else None
+    )
 
     if body.session_id:
         # Build query to find indexed rulesets for this session
@@ -126,7 +144,29 @@ async def submit_query(
             ns_stmt = ns_stmt.where(RulesetMetadata.id.in_(body.ruleset_ids))
 
         ns_result = await db.execute(ns_stmt)
-        namespaces = [str(row[0]) for row in ns_result.all()]
+        upload_namespaces = [str(row[0]) for row in ns_result.all()]
+        if requested_namespace_ids is not None:
+            upload_namespaces = [ns for ns in upload_namespaces if ns in requested_namespace_ids]
+        namespaces.extend(upload_namespaces)
+
+        # Include validated official catalog rulesets attached to the session.
+        if session_active_official_ruleset_ids:
+            official_stmt = (
+                select(OfficialRuleset.id)
+                .where(
+                    OfficialRuleset.id.in_(session_active_official_ruleset_ids),
+                    OfficialRuleset.status.in_(READY_CATALOG_STATUSES),
+                    OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+                )
+            )
+            official_result = await db.execute(official_stmt)
+            official_namespaces = [str(row[0]) for row in official_result.all()]
+            if requested_namespace_ids is not None:
+                official_namespaces = [ns for ns in official_namespaces if ns in requested_namespace_ids]
+            namespaces.extend(official_namespaces)
+
+    # Deduplicate while preserving order.
+    namespaces = list(dict.fromkeys(namespaces))
 
     if not namespaces:
         raise HTTPException(

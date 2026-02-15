@@ -21,7 +21,8 @@ export default function NewAgentPage() {
 
   // Form State
   const [formData, setFormData] = useState({
-    name: "",
+    gameName: "",
+    npcName: "",
     persona: "Helpful Guide",
     systemPrompt: "",
   });
@@ -31,23 +32,34 @@ export default function NewAgentPage() {
   const [isUploading, setIsUploading] = useState(false);
 
   const handleCreateAgent = async () => {
-    if (!formData.name) {
-      toast({ title: "Error", description: "Agent name is required", variant: "destructive" });
+    const trimmedGameName = formData.gameName.trim();
+    const trimmedNpcName = formData.npcName.trim();
+    if (!trimmedGameName) {
+      toast({ title: "Error", description: "Game name is required", variant: "destructive" });
       return;
     }
+    if (!trimmedNpcName) {
+      toast({ title: "Error", description: "NPC name is required", variant: "destructive" });
+      return;
+    }
+
+    const personaLabel = `${trimmedNpcName} - ${formData.persona}`;
+    const customPrompt = formData.systemPrompt.trim();
+    const systemPromptOverride = customPrompt || undefined;
 
     setIsLoading(true);
     try {
       const session = await api.createSession({
-        game_name: formData.name, // Using game_name as Agent Name
-        persona: formData.persona,
-        system_prompt_override: formData.systemPrompt || undefined,
+        game_name: trimmedGameName,
+        persona: personaLabel,
+        system_prompt_override: systemPromptOverride,
       });
       setAgentId(session.id);
       setStep(2);
-      toast({ title: "Success", description: "Agent created! Now add knowledge." });
-    } catch {
-      toast({ title: "Error", description: "Failed to create agent", variant: "destructive" });
+      toast({ title: "Success", description: "Session created! Now add game rules." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create agent";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -60,7 +72,7 @@ export default function NewAgentPage() {
     try {
       const data = new FormData();
       data.append("file", uploadFile);
-      data.append("game_name", formData.name);
+      data.append("game_name", formData.gameName.trim());
       data.append("source_type", "BASE");
 
       await api.uploadRuleset(agentId, data);
@@ -84,13 +96,13 @@ export default function NewAgentPage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Recruit an NPC</h2>
-          <p className="text-muted-foreground">Configure a custom AI persona with specific knowledge and behavior.</p>
+          <h2 className="text-3xl font-bold tracking-tight">Start a Game Session</h2>
+          <p className="text-muted-foreground">Pick a game, define your NPC arbiter style, then upload rules if needed.</p>
         </div>
       </div>
 
       <div className="flex items-center justify-center space-x-4">
-        <StepIndicator number={1} title="Who Are They?" current={step === 1} completed={step > 1} />
+        <StepIndicator number={1} title="Game + NPC" current={step === 1} completed={step > 1} />
         <div className="w-16 h-px bg-border" />
         <StepIndicator number={2} title="What They Know" current={step === 2} completed={step > 2} />
         <div className="w-16 h-px bg-border" />
@@ -101,17 +113,27 @@ export default function NewAgentPage() {
         {step === 1 && (
           <>
             <CardHeader>
-              <CardTitle>NPC Identity</CardTitle>
-              <CardDescription>Define who your NPC is and how they behave.</CardDescription>
+              <CardTitle>Session Setup</CardTitle>
+              <CardDescription>Associate this session to a game and configure your NPC judge behavior.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">NPC Name</Label>
+                <Label htmlFor="gameName">Game Name</Label>
                 <Input
-                  id="name"
+                  id="gameName"
+                  placeholder="e.g. Catan (6th Ed), D&D 5e, Root"
+                  value={formData.gameName}
+                  onChange={(e) => setFormData({ ...formData, gameName: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="npcName">NPC Name</Label>
+                <Input
+                  id="npcName"
                   placeholder="e.g. Gandalf the Rules Nerd"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  value={formData.npcName}
+                  onChange={(e) => setFormData({ ...formData, npcName: e.target.value })}
                 />
               </div>
 
@@ -147,7 +169,7 @@ export default function NewAgentPage() {
               )}
             </CardContent>
             <CardFooter className="flex justify-end">
-              <Button onClick={handleCreateAgent} disabled={isLoading || !formData.name}>
+              <Button onClick={handleCreateAgent} disabled={isLoading || !formData.gameName || !formData.npcName}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Next: Add Knowledge
               </Button>
@@ -165,7 +187,8 @@ export default function NewAgentPage() {
               <div className="text-center space-y-2">
                  <Bot className="h-12 w-12 mx-auto text-primary/20" />
                  <p className="text-sm text-muted-foreground">
-                   Your NPC <strong>{formData.name}</strong> is created. Now give them forbidden knowledge.
+                   Your NPC <strong>{formData.npcName}</strong> is assigned to{" "}
+                   <strong>{formData.gameName}</strong>. Upload the rules so answers stay grounded.
                  </p>
               </div>
               
@@ -212,14 +235,14 @@ export default function NewAgentPage() {
               <div className="rounded-full bg-green-500/15 p-3">
                 <CheckCircle className="h-12 w-12 text-green-600" />
               </div>
-              <h3 className="text-lg font-semibold">{formData.name}</h3>
+              <h3 className="text-lg font-semibold">{formData.gameName}</h3>
               <p className="text-sm text-muted-foreground text-center">
-                 Ready to answer questions using {formData.persona} persona.
+                 Ready to answer questions with NPC <strong>{formData.npcName}</strong> using {formData.persona} style.
               </p>
               {uploadFile && <p className="text-xs text-muted-foreground text-center">Includes knowledge from: {uploadFile.name}</p>}
             </CardContent>
             <CardFooter className="flex justify-center">
-               <Button onClick={handleFinish} className="w-full sm:w-auto">Go to My NPCs</Button>
+               <Button onClick={handleFinish} className="w-full sm:w-auto">Go to Ask Sessions</Button>
             </CardFooter>
           </>
         )}

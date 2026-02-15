@@ -24,6 +24,7 @@ from typing import Annotated
 
 import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException
+from redis.exceptions import RedisError
 
 from app.api.deps import get_redis
 from app.config import Settings, get_settings
@@ -137,15 +138,35 @@ class RateLimiter:
         window_key = now.strftime(_WINDOW_FORMAT[window_type])
         key = f"rate:{category}:{user_id}:{window_key}"
 
-        # Atomic increment — safe for concurrent requests
-        current = await self._redis.incr(key)
+        try:
+            # Atomic increment — safe for concurrent requests
+            current = await self._redis.incr(key)
 
-        # Set TTL only on the first request of the window
-        if current == 1:
-            await self._redis.expire(key, _WINDOW_TTL[window_type])
+            # Set TTL only on the first request of the window
+            if current == 1:
+                await self._redis.expire(key, _WINDOW_TTL[window_type])
 
-        remaining = max(0, max_requests - current)
-        ttl = await self._redis.ttl(key)
+            remaining = max(0, max_requests - current)
+            ttl = await self._redis.ttl(key)
+        except RedisError as exc:
+            logger.warning(
+                "rate_limit_backend_unavailable; allowing request",
+                extra={
+                    "category": category,
+                    "tier": tier,
+                    "user_id": user_id,
+                    "error": str(exc),
+                },
+            )
+            # Fail-open to preserve core app availability if Redis is degraded.
+            return {
+                "allowed": True,
+                "remaining": max_requests,
+                "limit": max_requests,
+                "reset_seconds": None,
+                "category": category,
+                "degraded": True,
+            }
 
         if current > max_requests:
             # Build a user-friendly message based on category

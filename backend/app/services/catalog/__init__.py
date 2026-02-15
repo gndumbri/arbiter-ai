@@ -1,1 +1,1 @@
-# Catalog data ingestion: BGG metadata + Open5e SRD.
+# Catalog data ingestion: BGG metadata + Open-license rules ingestion.

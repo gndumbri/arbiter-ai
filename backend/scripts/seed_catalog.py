@@ -200,10 +200,11 @@ POPULAR_GAMES = [
 async def seed() -> None:
     """Seed the database with metadata-only game entries + live data.
 
-    Three data sources, run in order:
-        1. Static catalog (POPULAR_GAMES) — ~132 curated games
+    Four data sources, run in order:
+        1. Static catalog (POPULAR_GAMES) — curated evergreen games
         2. BGG Hot 50 — live trending board games from BoardGameGeek
-        3. Open5e SRD — D&D 5e System Reference Document (CC-BY-4.0)
+        3. BGG Ranked list — large top-ranked catalog (configurable limit)
+        4. Open-license rules docs from Open5e (CC/OGL/ORC) with embeddings
 
     Idempotent: skips any games whose slug already exists in the DB.
     """
@@ -282,13 +283,37 @@ async def seed() -> None:
             logger.warning("seed_bgg_failed", error=str(e))
             await db.rollback()
 
-        # ── Source 3: Open5e SRD (D&D 5e) ────────────────────────────────────
+        # ── Source 3: BGG Ranked list (Top N) ────────────────────────────────
         try:
-            from app.services.catalog.open5e_ingester import sync_srd
+            from app.services.catalog.bgg_fetcher import sync_ranked_games
 
-            srd_chunks = await sync_srd(db, community_pub.id)
+            ranked_count = await sync_ranked_games(
+                db,
+                community_pub.id,
+                limit=settings.catalog_ranked_game_limit,
+            )
             await db.commit()
-            logger.info("seed_open5e_complete", chunks=srd_chunks)
+            logger.info(
+                "seed_bgg_ranked_complete",
+                created=ranked_count,
+                limit=settings.catalog_ranked_game_limit,
+            )
+        except Exception as e:
+            logger.warning("seed_bgg_ranked_failed", error=str(e))
+            await db.rollback()
+
+        # ── Source 4: Open5e Open-License Rulesets ───────────────────────────
+        try:
+            from app.services.catalog.open5e_ingester import sync_open_licensed_documents
+
+            open_rules_stats = await sync_open_licensed_documents(
+                db,
+                community_pub.id,
+                max_documents=settings.open_rules_max_documents,
+                allowed_license_keywords=settings.open_rules_allowed_licenses_list,
+                force_reindex=settings.open_rules_force_reindex,
+            )
+            logger.info("seed_open5e_complete", **open_rules_stats)
         except Exception as e:
             logger.warning("seed_open5e_failed", error=str(e))
             await db.rollback()
@@ -299,4 +324,3 @@ async def seed() -> None:
 
 if __name__ == "__main__":
     asyncio.run(seed())
-

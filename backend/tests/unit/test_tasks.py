@@ -7,7 +7,11 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.main import app
-from app.workers.tasks import ingest_ruleset
+from app.workers.tasks import (
+    ingest_ruleset,
+    sync_catalog_metadata,
+    sync_open_license_rules,
+)
 
 
 def test_upload_ruleset_dispatches_task(
@@ -90,3 +94,23 @@ def test_ingest_ruleset_task(
     # Verify pipeline called
     mock_pipeline_cls.assert_called_once()
     mock_pipeline.process.assert_called_once()
+
+
+@patch("app.workers.tasks._run_catalog_metadata_sync", new_callable=AsyncMock)
+def test_sync_catalog_metadata_task_returns_result(mock_runner: AsyncMock) -> None:
+    mock_runner.return_value = {"status": "ok", "ranked_created": 10}
+
+    result = sync_catalog_metadata()
+
+    assert result["status"] == "ok"
+    assert result["ranked_created"] == 10
+
+
+@patch("app.workers.tasks._run_open_rules_sync", new_callable=AsyncMock)
+def test_sync_open_license_rules_task_returns_result(mock_runner: AsyncMock) -> None:
+    mock_runner.return_value = {"status": "ok", "chunks_indexed": 123}
+
+    result = sync_open_license_rules()
+
+    assert result["status"] == "ok"
+    assert result["chunks_indexed"] == 123

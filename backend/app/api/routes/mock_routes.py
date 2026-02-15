@@ -286,6 +286,15 @@ async def mock_list_sessions(
     return sessions
 
 
+@api_router.get("/sessions/{session_id}", tags=["sessions"])
+async def mock_get_session(session_id: str):
+    """Get a single mock session by ID."""
+    for session in MOCK_SESSIONS_STATE:
+        if session.get("id") == session_id:
+            return session
+    raise HTTPException(status_code=404, detail="Session not found.")
+
+
 @api_router.post("/sessions", status_code=201, tags=["sessions"])
 async def mock_create_session(body: MockSessionCreate):
     """Create a new mock session.
