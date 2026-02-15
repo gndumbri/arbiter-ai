@@ -398,5 +398,20 @@ export const api = {
   deleteAccount: async () => {
     return fetcher<void>("/users/me", { method: "DELETE" });
   },
+
+  // ─── Agents ──────────────────────────────────────────────────────────────────
+  /** List active sessions as agents (powers the agent dashboard). */
+  getAgents: async () => {
+    return fetcher<AgentEntry[]>("/agents");
+  },
 };
+
+/** Agent entry — a session that acts as a configured rules judge. */
+export interface AgentEntry {
+  id: string;
+  game_name: string;
+  persona: string | null;
+  created_at: string | null;
+}
+
 

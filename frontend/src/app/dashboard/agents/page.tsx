@@ -20,13 +20,13 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">My Agents</h2>
-          <p className="text-muted-foreground">Configure custom AI agents with specific rulesets and personas.</p>
+          <h2 className="text-3xl font-bold tracking-tight">My NPCs</h2>
+          <p className="text-muted-foreground">Custom AI personas trained on your rulesets.</p>
         </div>
         <Button asChild>
           <Link href="/dashboard/agents/new">
             <Plus className="mr-2 h-4 w-4" />
-            Create Agent
+            Recruit NPC
           </Link>
         </Button>
       </div>
@@ -42,9 +42,9 @@ export default function AgentsPage() {
       ) : agents?.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <Bot className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">No agents yet</h3>
+          <h3 className="text-lg font-semibold">No NPCs on payroll</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            Create your first custom agent to get started.
+            Recruit one to answer rules questions your way.
           </p>
           <Button asChild>
             <Link href="/dashboard/agents/new">
@@ -85,7 +85,7 @@ export default function AgentsPage() {
                   <Button asChild className="flex-1" variant="secondary"> 
                     <Link href={`/session/${agent.id}`}>
                       <MessageSquare className="mr-2 h-4 w-4" />
-                      Chat
+                      Consult
                     </Link>
                   </Button>
                   <EmbedButton agentId={agent.id} />

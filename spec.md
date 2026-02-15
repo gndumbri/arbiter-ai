@@ -244,21 +244,39 @@ CREATE TABLE saved_rulings (
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     query TEXT NOT NULL,
     verdict_json JSONB NOT NULL,
-    privacy_level TEXT DEFAULT 'PRIVATE',  -- PRIVATE, PARTY, PUBLIC
-    tags JSONB,                             -- ["combat", "magic"]
+    game_name TEXT,                          -- links ruling to a game for filtering
+    session_id UUID REFERENCES sessions(id), -- links to originating chat session
+    privacy_level TEXT DEFAULT 'PRIVATE',    -- PRIVATE, PARTY, PUBLIC
+    tags JSONB,                              -- ["combat", "magic"]
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Rule Chunks (pgvector — replaces Pinecone)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE rule_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ruleset_id UUID REFERENCES official_rulesets(id) ON DELETE CASCADE,
+    chunk_index INT NOT NULL DEFAULT 0,
+    chunk_text TEXT NOT NULL,
+    section_header TEXT,
+    page_number INT,
+    embedding VECTOR(1024),                  -- Bedrock Titan v2 output dimension
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 ```
 
-### 2.2 Pinecone Configuration
+### 2.2 pgvector Configuration (Replaces Pinecone)
 
-| Setting             | Value                                   |
-| ------------------- | --------------------------------------- |
-| Index name          | `arbiter-rules`                         |
-| Dimensions          | 1536                                    |
-| Metric              | cosine                                  |
-| User namespace      | `user_{user_id}`                        |
-| Publisher namespace | `official_{publisher_slug}_{game_slug}` |
+| Setting          | Value                                      |
+| ---------------- | ------------------------------------------ |
+| Extension        | `pgvector` (via `CREATE EXTENSION vector`) |
+| Dimensions       | 1024 (Bedrock Titan Embed v2)              |
+| Distance metric  | L2 (`<->` operator)                        |
+| Storage          | `rule_chunks.embedding` column in main RDS |
+| Namespace equiv. | `ruleset_id` FK on `rule_chunks`           |
 
 ### 2.3 Redis Keys
 
@@ -314,15 +332,23 @@ CREATE TABLE saved_rulings (
 | GET    | `/api/v1/admin/tiers`                | JWT+Admin | Get/update subscription tiers    |
 | PUT    | `/api/v1/admin/tiers/{name}`         | JWT+Admin | Update tier limits               |
 | GET    | `/api/v1/rulings`                    | JWT       | List user's saved rulings        |
-| GET    | `/api/v1/rulings/public`             | JWT       | List public community rulings    |
+| GET    | `/api/v1/rulings?game_name=X`        | JWT       | Filter rulings by game           |
+| GET    | `/api/v1/rulings/games`              | JWT       | Distinct game names + counts     |
+| GET    | `/api/v1/rulings/public`             | None      | List public community rulings    |
 | POST   | `/api/v1/rulings`                    | JWT       | Save a ruling                    |
+| PATCH  | `/api/v1/rulings/{id}`               | JWT       | Update ruling metadata           |
 | DELETE | `/api/v1/rulings/{id}`               | JWT       | Delete a saved ruling            |
+| GET    | `/api/v1/agents`                     | JWT       | List user's agents (sessions)    |
 | POST   | `/api/v1/parties`                    | JWT       | Create a party                   |
 | GET    | `/api/v1/parties`                    | JWT       | List user's parties              |
 | POST   | `/api/v1/parties/{id}/join`          | JWT       | Join a party                     |
 | POST   | `/api/v1/parties/{id}/leave`         | JWT       | Leave a party                    |
 | DELETE | `/api/v1/parties/{id}`               | JWT       | Delete a party (owner only)      |
 | GET    | `/api/v1/parties/{id}/members`       | JWT       | List party members               |
+| DELETE | `/api/v1/parties/{id}/members/{uid}` | JWT       | Remove member (owner only)       |
+| PATCH  | `/api/v1/parties/{id}/owner`         | JWT       | Transfer ownership               |
+| GET    | `/api/v1/parties/{id}/invite`        | JWT       | Generate JWT invite link (48h)   |
+| POST   | `/api/v1/parties/join-via-link`      | JWT       | Join via signed invite token     |
 
 ### 3.3 Error Codes
 

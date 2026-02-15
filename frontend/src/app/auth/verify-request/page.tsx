@@ -18,13 +18,13 @@ export default function VerifyRequestPage() {
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-violet-500/10 ring-1 ring-violet-500/50">
               <MailCheck className="h-8 w-8 text-violet-500" />
             </div>
-            <CardTitle className="text-2xl font-bold">Check your email</CardTitle>
+            <CardTitle className="text-2xl font-bold">Check Your Inbox ✨</CardTitle>
             <CardDescription className="text-base text-zinc-400">
-              A sign-in link has been sent to your email address.
+              A magic link has been sent to your email. Click it to enter the arena.
             </CardDescription>
           </CardHeader>
           <CardContent className="text-center text-sm text-zinc-500">
-             Click the link in the email to sign in. You can close this tab.
+             If it doesn&apos;t appear, check your spam folder. You can close this tab.
           </CardContent>
         </Card>
       </motion.div>
