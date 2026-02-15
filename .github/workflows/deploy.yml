@@ -108,7 +108,7 @@ jobs:
     name: Terraform Apply
     runs-on: ubuntu-latest
     needs: [changes, build-backend, build-frontend]
-    if: always() && !failure() && !cancelled()
+    if: always() && !cancelled()
     defaults:
       run:
         working-directory: infra/terraform
