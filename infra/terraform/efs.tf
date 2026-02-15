@@ -4,10 +4,10 @@
 # so a network file system is required for reliable ingestion.
 
 locals {
-  manage_uploads_efs      = var.enable_shared_uploads && var.create_efs_resources
-  resolved_efs_file_system_id = var.create_efs_resources ? aws_efs_file_system.uploads[0].id : var.existing_efs_file_system_id
+  manage_uploads_efs           = var.enable_shared_uploads && var.create_efs_resources
+  resolved_efs_file_system_id  = var.create_efs_resources ? aws_efs_file_system.uploads[0].id : var.existing_efs_file_system_id
   resolved_efs_access_point_id = var.create_efs_resources ? aws_efs_access_point.uploads[0].id : var.existing_efs_access_point_id
-  shared_uploads_enabled = var.enable_shared_uploads && local.resolved_efs_file_system_id != ""
+  shared_uploads_enabled       = var.enable_shared_uploads && local.resolved_efs_file_system_id != ""
 }
 
 check "shared_uploads_inputs" {

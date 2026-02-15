@@ -23,6 +23,11 @@ on:
         default: ""
         type: string
 
+concurrency:
+  # Prevent parallel deploy workflow runs from competing on the same state lock.
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -77,7 +82,11 @@ jobs:
       - name: Validate infra inventory + Terraform config
         run: |
           python3 infra/scripts/check_infra_inventory.py --check
-          terraform -chdir=infra/terraform fmt -check -recursive
+          terraform -chdir=infra/terraform fmt -check -recursive || {
+            echo "::error::Terraform formatting drift detected. Run: docker run --rm -v \"$PWD\":/work -w /work hashicorp/terraform:1.5.7 fmt -recursive infra/terraform"
+            terraform -chdir=infra/terraform fmt -diff -recursive
+            exit 1
+          }
           terraform -chdir=infra/terraform init -backend=false
           terraform -chdir=infra/terraform validate
 
@@ -170,6 +179,24 @@ jobs:
         with:
           terraform_version: "~> 1.5"
 
+      - name: Validate required Terraform secrets
+        env:
+          SECRETS_MANAGER_ARN: ${{ secrets.SECRETS_MANAGER_ARN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          MISSING=0
+          if [ -z "$SECRETS_MANAGER_ARN" ]; then
+            echo "::error::Missing required GitHub secret: SECRETS_MANAGER_ARN"
+            MISSING=1
+          fi
+          if [ -z "$DB_PASSWORD" ]; then
+            echo "::error::Missing required GitHub secret: DB_PASSWORD"
+            MISSING=1
+          fi
+          if [ "$MISSING" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Resolve deploy context
         id: context
         run: |
@@ -221,7 +248,7 @@ jobs:
           PROJECT_NAME="${{ env.PROJECT_NAME }}"
           for svc in backend frontend worker beat; do
             echo "Attempting import for aws_ecs_service.${svc}..."
-            terraform import "${IMPORT_ARGS[@]}" "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true
+            terraform import "${IMPORT_ARGS[@]}" -lock-timeout=10m "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true
           done
 
       - name: Determine image tags
@@ -244,18 +271,44 @@ jobs:
           if [ -n "${{ steps.context.outputs.tf_vars_file }}" ]; then
             PLAN_ARGS+=("-var-file=${{ steps.context.outputs.tf_vars_file }}")
           fi
-          terraform plan "${PLAN_ARGS[@]}" \
-            -var="environment=${{ steps.context.outputs.deploy_mode }}" \
-            -var="app_mode=${{ steps.context.outputs.deploy_mode }}" \
-            -var="app_env=${{ steps.context.outputs.deploy_mode }}" \
-            -var="backend_image_tag=${{ steps.tags.outputs.backend_tag }}" \
-            -var="frontend_image_tag=${{ steps.tags.outputs.frontend_tag }}" \
-            -var="secrets_manager_arn=${{ secrets.SECRETS_MANAGER_ARN }}" \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -out=tfplan
+          run_plan() {
+            terraform plan "${PLAN_ARGS[@]}" \
+              -no-color \
+              -lock-timeout=10m \
+              -var="environment=${{ steps.context.outputs.deploy_mode }}" \
+              -var="app_mode=${{ steps.context.outputs.deploy_mode }}" \
+              -var="app_env=${{ steps.context.outputs.deploy_mode }}" \
+              -var="backend_image_tag=${{ steps.tags.outputs.backend_tag }}" \
+              -var="frontend_image_tag=${{ steps.tags.outputs.frontend_tag }}" \
+              -var="secrets_manager_arn=${{ secrets.SECRETS_MANAGER_ARN }}" \
+              -var="db_password=${{ secrets.DB_PASSWORD }}" \
+              -out=tfplan
+          }
+
+          set +e
+          run_plan 2>&1 | tee /tmp/terraform-plan.log
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$PLAN_EXIT" -eq 0 ]; then
+            exit 0
+          fi
+
+          # Recovery path for stale DynamoDB lock rows from interrupted runs.
+          if grep -q "Error acquiring the state lock" /tmp/terraform-plan.log; then
+            LOCK_ID="$(grep -m1 "ID:" /tmp/terraform-plan.log | sed -E 's/.*ID:[[:space:]]*([^[:space:]]+).*/\1/')"
+            if [ -n "$LOCK_ID" ]; then
+              echo "Detected Terraform state lock ($LOCK_ID). Attempting force-unlock then one retry."
+              terraform force-unlock -force "$LOCK_ID" || true
+              run_plan
+              exit 0
+            fi
+          fi
+
+          exit "$PLAN_EXIT"
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -lock-timeout=10m -auto-approve tfplan
 
   deploy:
     name: Deploy Services

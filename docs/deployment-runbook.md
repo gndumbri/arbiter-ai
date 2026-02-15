@@ -287,6 +287,20 @@ terraform plan  -var-file=environments/production.tfvars
 terraform apply -var-file=environments/production.tfvars
 ```
 
+### 4d. State Lock Troubleshooting
+
+If Terraform fails with `Error acquiring the state lock`:
+
+1. Confirm no other deploy workflow is currently running for the same branch/environment.
+2. If the lock is stale from a crashed run, force-unlock it using the lock ID from the error:
+
+```bash
+terraform force-unlock -force <LOCK_ID>
+```
+
+> [!CAUTION]
+> Only force-unlock when you are sure another Terraform run is not actively applying changes.
+
 ---
 
 ## Step 5: Frontend Deployment (Vercel / Amplify)

@@ -64,8 +64,8 @@ locals {
     lower(var.email_provider) == "ses"
     ? [{ name = "EMAIL_SERVER", valueFrom = "${var.secrets_manager_arn}:EMAIL_SERVER::" }]
     : lower(var.email_provider) == "brevo"
-      ? [{ name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }]
-      : []
+    ? [{ name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }]
+    : []
   )
   uploads_volume_name = "uploads-shared"
   shared_uploads_mount_points = local.shared_uploads_enabled ? [{

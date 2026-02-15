@@ -45,7 +45,7 @@ def test_deploy_workflow_loads_environment_tfvars_when_present() -> None:
 def test_deploy_workflow_imports_existing_ecs_services_before_plan() -> None:
     text = _read_workflow()
 
-    assert 'terraform import "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true' in text
+    assert 'terraform import "${IMPORT_ARGS[@]}" -lock-timeout=10m "aws_ecs_service.${svc}" "${PROJECT_NAME}-cluster/${PROJECT_NAME}-${svc}" || true' in text
 
 
 def test_deploy_workflow_import_step_has_required_tf_vars() -> None:
@@ -57,6 +57,14 @@ def test_deploy_workflow_import_step_has_required_tf_vars() -> None:
     assert "IMPORT_ARGS+=(\"-var-file=${{ steps.context.outputs.tf_vars_file }}\")" in text
 
 
+def test_deploy_workflow_fails_fast_when_required_secrets_missing() -> None:
+    text = _read_workflow()
+
+    assert "Validate required Terraform secrets" in text
+    assert "Missing required GitHub secret: SECRETS_MANAGER_ARN" in text
+    assert "Missing required GitHub secret: DB_PASSWORD" in text
+
+
 def test_deploy_workflow_runs_infra_prebuild_checks_before_builds() -> None:
     text = _read_workflow()
 
@@ -64,3 +72,12 @@ def test_deploy_workflow_runs_infra_prebuild_checks_before_builds() -> None:
     assert "python3 infra/scripts/check_infra_inventory.py --check" in text
     assert "terraform -chdir=infra/terraform validate" in text
     assert "needs: [changes, infra-prebuild-check]" in text
+
+
+def test_deploy_workflow_serializes_deploy_runs_and_handles_tf_locks() -> None:
+    text = _read_workflow()
+
+    assert "concurrency:" in text
+    assert "group: deploy-${{ github.workflow }}-${{ github.ref }}" in text
+    assert "-lock-timeout=10m" in text
+    assert "terraform force-unlock -force" in text
