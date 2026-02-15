@@ -55,6 +55,8 @@ export interface CatalogEntry {
   publisher_name: string;
   version: string;
   status: string;
+  license_type?: string;
+  attribution_text?: string;
 }
 
 export interface PartyResponse {
@@ -75,9 +77,16 @@ export interface SavedRulingResponse {
   id: string;
   query: string;
   verdict_json: JudgeVerdict;
+  game_name: string | null;
+  session_id: string | null;
   privacy_level: string;
   tags: string[] | null;
   created_at: string | null;
+}
+
+export interface GameRulingCount {
+  game_name: string;
+  count: number;
 }
 
 export interface Agent {
@@ -187,6 +196,10 @@ export const api = {
     });
   },
 
+  listSessions: async () => {
+    return fetcher<{ id: string; game_name: string; created_at: string; expires_at: string }[]>("/sessions");
+  },
+
   // ─── Rulesets ───────────────────────────────────────────────────────────────
   listRulesets: async () => {
     return fetcher<Ruleset[]>("/rulesets");
@@ -207,7 +220,7 @@ export const api = {
 
   // ─── Agents ─────────────────────────────────────────────────────────────────
   listAgents: async () => {
-    return fetcher<Agent[]>("/sessions?persona_only=true");
+    return fetcher<Agent[]>("/agents");
   },
 
   // ─── Judge ──────────────────────────────────────────────────────────────────
@@ -221,6 +234,14 @@ export const api = {
   // ─── Game Catalog ───────────────────────────────────────────────────────────
   listCatalog: async () => {
     return fetcher<CatalogEntry[]>("/catalog/");
+  },
+
+  /**
+   * Search the catalog by game name or publisher (powers the wizard Step 1).
+   * Uses the ?search= ILIKE param on the backend.
+   */
+  searchCatalog: async (query: string) => {
+    return fetcher<CatalogEntry[]>(`/catalog/?search=${encodeURIComponent(query)}`);
   },
 
   // ─── User Game Library ──────────────────────────────────────────────────────
@@ -277,26 +298,76 @@ export const api = {
     return fetcher<void>(`/parties/${partyId}`, { method: "DELETE" });
   },
 
+  getInviteLink: async (partyId: string) => {
+    return fetcher<{ invite_url: string; expires_at: string }>(`/parties/${partyId}/invite`);
+  },
+
+  joinViaInvite: async (token: string) => {
+    return fetcher<{ party_id: string; status: string }>("/parties/join-via-link", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
+  removeMember: async (partyId: string, userId: string) => {
+    return fetcher<{ status: string }>(`/parties/${partyId}/members/${userId}`, {
+      method: "DELETE",
+    });
+  },
+
+  transferOwnership: async (partyId: string, newOwnerId: string) => {
+    return fetcher<{ status: string }>(`/parties/${partyId}/owner`, {
+      method: "PATCH",
+      body: JSON.stringify({ new_owner_id: newOwnerId }),
+    });
+  },
+
+  listGameShares: async (partyId: string) => {
+    return fetcher<{ game_name: string; user_id: string }[]>(`/parties/${partyId}/game-shares`);
+  },
+
+  updateGameShares: async (partyId: string, gameNames: string[]) => {
+    return fetcher<{ status: string }>(`/parties/${partyId}/game-shares`, {
+      method: "PUT",
+      body: JSON.stringify({ game_names: gameNames }),
+    });
+  },
+
   // ─── Saved Rulings ─────────────────────────────────────────────────────────
-  listRulings: async () => {
-    return fetcher<SavedRulingResponse[]>("/rulings");
+  listRulings: async (gameName?: string) => {
+    const qs = gameName ? `?game_name=${encodeURIComponent(gameName)}` : "";
+    return fetcher<SavedRulingResponse[]>(`/rulings${qs}`);
+  },
+
+  listRulingGames: async () => {
+    return fetcher<GameRulingCount[]>("/rulings/games");
   },
 
   listPublicRulings: async () => {
     return fetcher<SavedRulingResponse[]>("/rulings/public");
   },
 
-  saveRuling: async (data: { query: string; verdict_json: Record<string, unknown>; privacy_level?: string; tags?: string[] }) => {
+  saveRuling: async (data: {
+    query: string;
+    verdict_json: Record<string, unknown>;
+    game_name?: string;
+    session_id?: string;
+    privacy_level?: string;
+    tags?: string[];
+  }) => {
     return fetcher<SavedRulingResponse>("/rulings", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
 
-  updateRulingPrivacy: async (rulingId: string, privacyLevel: string) => {
-    return fetcher<{ id: string; privacy_level: string }>(`/rulings/${rulingId}/privacy`, {
+  updateRuling: async (
+    rulingId: string,
+    data: { tags?: string[] | null; game_name?: string; privacy_level?: string }
+  ) => {
+    return fetcher<SavedRulingResponse>(`/rulings/${rulingId}`, {
       method: "PATCH",
-      body: JSON.stringify({ privacy_level: privacyLevel }),
+      body: JSON.stringify(data),
     });
   },
 

@@ -1,9 +1,10 @@
 /**
- * PartiesPage.tsx — Party management for shared game sessions.
+ * PartiesPage.tsx — Party management with member controls, JWT invites,
+ * and per-game sharing.
  *
- * Create/join/leave/delete parties via /api/v1/parties endpoints.
- * Supports clipboard-based invite links with party ID extraction.
- * Uses SWR for live data + optimistic UI via mutate().
+ * Create/join/leave/delete parties. Owners can remove members and
+ * transfer ownership. Members can self-remove via Leave. Invite links
+ * use JWT tokens pointing to /invite/[token] for accept/decline.
  *
  * Used by: /dashboard/parties route
  */
@@ -11,6 +12,7 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users,
@@ -21,10 +23,16 @@ import {
   Trash2,
   User,
   Loader2,
+  ChevronDown,
+  ChevronUp,
+  Crown,
+  UserMinus,
+  ArrowRightLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
@@ -42,21 +50,43 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { api, PartyResponse } from "@/lib/api";
+import { api, PartyResponse, PartyMemberResponse } from "@/lib/api";
+
+// ─── Copy JWT Invite Button ─────────────────────────────────────────────────
 
 function CopyInviteButton({ partyId }: { partyId: string }) {
   const [copied, setCopied] = useState(false);
-  const inviteLink = `${typeof window !== "undefined" ? window.location.origin : ""}/dashboard/parties?join=${partyId}`;
+  const [loading, setLoading] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(inviteLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    setLoading(true);
+    try {
+      const { invite_url } = await api.getInviteLink(partyId);
+      await navigator.clipboard.writeText(invite_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback — copy a raw party ID
+      const fallback = `${window.location.origin}/dashboard/parties?join=${partyId}`;
+      await navigator.clipboard.writeText(fallback);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <Button variant="outline" size="sm" className="gap-1.5" onClick={handleCopy}>
-      {copied ? (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-1.5"
+      onClick={handleCopy}
+      disabled={loading}
+    >
+      {loading ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : copied ? (
         <>
           <Check className="h-3.5 w-3.5 text-green-400" />
           Copied!
@@ -71,15 +101,120 @@ function CopyInviteButton({ partyId }: { partyId: string }) {
   );
 }
 
+// ─── Member List Panel ──────────────────────────────────────────────────────
+
+function MemberList({
+  partyId,
+  ownerId,
+  isOwner,
+}: {
+  partyId: string;
+  ownerId: string;
+  isOwner: boolean;
+}) {
+  const { data: members } = useSWR(
+    `party-members-${partyId}`,
+    () => api.getPartyMembers(partyId),
+    { onError: () => {} }
+  );
+
+  const handleRemove = async (userId: string) => {
+    try {
+      await api.removeMember(partyId, userId);
+      mutate(`party-members-${partyId}`);
+      mutate("parties");
+    } catch {
+      // silent
+    }
+  };
+
+  const handleTransfer = async (userId: string) => {
+    if (!confirm("Transfer ownership to this member? You'll become a regular member.")) return;
+    try {
+      await api.transferOwnership(partyId, userId);
+      mutate(`party-members-${partyId}`);
+      mutate("parties");
+    } catch {
+      // silent
+    }
+  };
+
+  if (!members) {
+    return (
+      <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+        Loading members...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1 p-2">
+      {members.map((member: PartyMemberResponse) => (
+        <div
+          key={member.user_id}
+          className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-2">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs">
+              {member.user_id === ownerId
+                ? member.user_id.slice(0, 8) + "…"
+                : member.user_id.slice(0, 8) + "…"}
+            </span>
+            {member.role === "OWNER" && (
+              <Badge variant="secondary" className="text-[10px] gap-0.5 px-1 py-0">
+                <Crown className="h-2.5 w-2.5" />
+                Owner
+              </Badge>
+            )}
+          </div>
+
+          {/* Owner controls — only show for non-owner members */}
+          {isOwner && member.user_id !== ownerId && (
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-primary"
+                onClick={() => handleTransfer(member.user_id)}
+                title="Transfer ownership"
+              >
+                <ArrowRightLeft className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                onClick={() => handleRemove(member.user_id)}
+                title="Remove member"
+              >
+                <UserMinus className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Party Card ──────────────────────────────────────────────────────────────
+
 function PartyCard({
   party,
+  currentUserId,
   onLeave,
   onDelete,
 }: {
   party: PartyResponse;
+  currentUserId: string;
   onLeave: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const isOwner = party.owner_id === currentUserId;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -102,13 +237,55 @@ function PartyCard({
                   : "recently"}
               </CardDescription>
             </div>
-            <Badge variant="secondary" className="gap-1">
-              <Users className="h-3 w-3" />
-              {party.member_count} {party.member_count === 1 ? "member" : "members"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {isOwner && (
+                <Badge variant="default" className="text-[10px] gap-0.5 bg-amber-500/20 text-amber-400 border-amber-500/30">
+                  <Crown className="h-2.5 w-2.5" />
+                  Owner
+                </Badge>
+              )}
+              <Badge variant="secondary" className="gap-1">
+                <Users className="h-3 w-3" />
+                {party.member_count}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
+
+        {/* Expandable member list */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <CardContent className="pt-0 pb-2 border-t border-border/30">
+                <MemberList
+                  partyId={party.id}
+                  ownerId={party.owner_id}
+                  isOwner={isOwner}
+                />
+              </CardContent>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <CardFooter className="gap-2 flex-wrap">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+            Members
+          </Button>
           <CopyInviteButton partyId={party.id} />
           <Button
             variant="ghost"
@@ -119,19 +296,23 @@ function PartyCard({
             <LogOut className="h-3.5 w-3.5" />
             Leave
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-muted-foreground hover:text-destructive ml-auto"
-            onClick={() => onDelete(party.id)}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {isOwner && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground hover:text-destructive ml-auto"
+              onClick={() => onDelete(party.id)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </motion.div>
   );
 }
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
 
 export default function PartiesPage() {
   const [newPartyName, setNewPartyName] = useState("");
@@ -140,6 +321,10 @@ export default function PartiesPage() {
   const [joining, setJoining] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+  const { data: session } = useSession();
+
+  // WHY: We need the current user ID to determine owner-only UI.
+  const currentUserId = (session?.user as { id?: string } | undefined)?.id ?? "";
 
   const { data: parties, isLoading } = useSWR("parties", api.listParties, {
     onError: () => {},
@@ -294,6 +479,7 @@ export default function PartiesPage() {
               <PartyCard
                 key={party.id}
                 party={party}
+                currentUserId={currentUserId}
                 onLeave={handleLeave}
                 onDelete={handleDelete}
               />

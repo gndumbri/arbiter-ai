@@ -1,5 +1,6 @@
 from . import (
     admin,
+    agents,
     billing,
     catalog,
     health,
@@ -15,6 +16,7 @@ from . import (
 
 __all__ = [
     "admin",
+    "agents",
     "billing",
     "catalog",
     "health",

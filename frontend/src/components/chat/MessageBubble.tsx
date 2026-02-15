@@ -25,6 +25,8 @@ interface MessageBubbleProps {
     verdict?: any;
     timestamp?: Date;
   };
+  gameName?: string;
+  sessionId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onCitationClick?: (citation: any) => void;
   onFollowUp?: (question: string) => void;
@@ -46,7 +48,7 @@ function ConfidencePill({ confidence }: { confidence: number }) {
   );
 }
 
-export function MessageBubble({ message, onCitationClick, onFollowUp }: MessageBubbleProps) {
+export function MessageBubble({ message, gameName, sessionId, onCitationClick, onFollowUp }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const { verdict } = message;
   const [saved, setSaved] = useState(false);
@@ -59,6 +61,8 @@ export function MessageBubble({ message, onCitationClick, onFollowUp }: MessageB
       await api.saveRuling({
         query: message.content,
         verdict_json: verdict,
+        game_name: gameName,
+        session_id: sessionId,
         privacy_level: "PRIVATE",
       });
       setSaved(true);

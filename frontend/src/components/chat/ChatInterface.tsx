@@ -10,6 +10,7 @@ import { CitationViewer } from "./CitationViewer";
 import { api, JudgeVerdict, VerdictCitation } from "@/lib/api";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import useSWR from "swr";
 
 interface ChatInterfaceProps {
   sessionId: string;
@@ -35,6 +36,12 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const [selectedCitation, setSelectedCitation] = useState<VerdictCitation | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // WHY: Fetch the session to get the game_name for auto-tagging saved rulings.
+  const { data: sessions } = useSWR("sessions", () => api.listSessions(), {
+    onError: () => {},
+  });
+  const gameName = sessions?.find((s: { id: string; game_name: string }) => s.id === sessionId)?.game_name;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -143,6 +150,8 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
                 <MessageBubble
                   key={msg.id}
                   message={msg}
+                  gameName={gameName}
+                  sessionId={sessionId}
                   onCitationClick={setSelectedCitation}
                   onFollowUp={handleFollowUp}
                 />
