@@ -82,6 +82,15 @@ def test_terraform_task_role_has_bedrock_permissions() -> None:
     assert "\"bedrock:InvokeModelWithResponseStream\"" in text
 
 
+def test_terraform_declares_optional_ses_domain_and_gates_ses_resources() -> None:
+    vars_text = _read_tf("infra/terraform/variables.tf")
+    ses_text = _read_tf("infra/terraform/ses.tf")
+
+    assert 'variable "ses_domain"' in vars_text
+    assert 'default     = ""' in vars_text
+    assert 'trimspace(var.ses_domain) != "" ? 1 : 0' in ses_text
+
+
 def test_terraform_github_actions_role_includes_efs_permissions() -> None:
     text = _read_tf("infra/terraform/iam.tf")
 

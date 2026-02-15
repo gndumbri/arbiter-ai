@@ -93,6 +93,12 @@ variable "email_provider" {
   }
 }
 
+variable "ses_domain" {
+  description = "Optional SES sending domain to provision/verify via Terraform (leave empty to skip SES identity resources)"
+  type        = string
+  default     = ""
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string

@@ -1,11 +1,13 @@
 # --- SES Domain Identity (email sending) ---
 
 resource "aws_ses_domain_identity" "main" {
-  domain = var.ses_domain
+  count  = trimspace(var.ses_domain) != "" ? 1 : 0
+  domain = trimspace(var.ses_domain)
 }
 
 resource "aws_ses_domain_dkim" "main" {
-  domain = aws_ses_domain_identity.main.domain
+  count  = trimspace(var.ses_domain) != "" ? 1 : 0
+  domain = aws_ses_domain_identity.main[0].domain
 }
 
 # --- IAM: Allow frontend ECS task role to send emails via SES ---
