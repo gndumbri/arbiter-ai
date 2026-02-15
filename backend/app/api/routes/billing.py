@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from datetime import UTC, datetime
 
 import stripe
 from fastapi import APIRouter, HTTPException, Request
@@ -213,6 +214,59 @@ async def create_checkout(body: CheckoutRequest, user: CurrentUser, db: DbSessio
         ) from exc
 
 
+# ─── Customer Portal ─────────────────────────────────────────────────────────
+
+
+@router.post("/portal")
+async def create_portal_session(user: CurrentUser, db: DbSession) -> dict:
+    """Create a Stripe Customer Portal session for subscription management.
+
+    Auth: JWT required.
+    Rate limit: None.
+    Tier: PRO (only users with an active subscription have a portal to visit).
+
+    WHY: Stripe's hosted portal lets users cancel, update payment info,
+    and view invoices without us building custom UI for each.
+
+    Returns:
+        Dict with portal_url to redirect the user.
+
+    Raises:
+        HTTPException: 404 if user has no subscription, 503 if Stripe not configured.
+    """
+    settings = get_settings()
+
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=503, detail="Stripe not configured.")
+
+    # Look up the user's subscription to get their Stripe customer ID
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == user["id"])
+    )
+    sub = result.scalar_one_or_none()
+
+    if not sub or not sub.stripe_customer_id:
+        raise HTTPException(
+            status_code=404,
+            detail="No active subscription found. Subscribe first.",
+        )
+
+    stripe.api_key = settings.stripe_secret_key
+
+    try:
+        portal_session = stripe.billing_portal.Session.create(
+            customer=sub.stripe_customer_id,
+            return_url=f"{settings.allowed_origins}/settings",
+        )
+        return {"portal_url": portal_session.url}
+    except stripe.StripeError as exc:
+        logger.exception("Stripe portal creation failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Stripe error: {exc.user_message or str(exc)}",
+        ) from exc
+
+
 # ─── Stripe Webhook ───────────────────────────────────────────────────────────
 
 
@@ -345,6 +399,26 @@ async def _handle_checkout_completed(data: dict, db: DbSession) -> None:
         logger.error("Checkout completed but user not found: ref=%s email=%s", user_id_str, customer_email)
         return
 
+    # WHY: The checkout.session.completed event contains the subscription ID.
+    # We need it for the Customer Portal and for syncing renewals.
+    subscription_id = (
+        data.get("subscription") if isinstance(data, dict)
+        else getattr(data, "subscription", None)
+    )
+
+    # Fetch the full subscription to get current_period_end
+    period_end = None
+    if subscription_id:
+        try:
+            settings = get_settings()
+            stripe.api_key = settings.stripe_secret_key
+            stripe_sub = stripe.Subscription.retrieve(subscription_id)
+            period_end = datetime.fromtimestamp(
+                stripe_sub.current_period_end, tz=UTC
+            )
+        except Exception as e:
+            logger.warning("Could not fetch subscription details: %s", e)
+
     # Create or update the Subscription record
     result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     existing_sub = result.scalar_one_or_none()
@@ -353,6 +427,9 @@ async def _handle_checkout_completed(data: dict, db: DbSession) -> None:
         existing_sub.plan_tier = target_tier
         existing_sub.status = "ACTIVE"
         existing_sub.stripe_customer_id = customer_id
+        existing_sub.stripe_subscription_id = subscription_id
+        if period_end:
+            existing_sub.current_period_end = period_end
     else:
         new_sub = Subscription(
             id=uuid.uuid4(),
@@ -360,11 +437,13 @@ async def _handle_checkout_completed(data: dict, db: DbSession) -> None:
             plan_tier=target_tier,
             status="ACTIVE",
             stripe_customer_id=customer_id,
+            stripe_subscription_id=subscription_id,
+            current_period_end=period_end,
         )
         db.add(new_sub)
 
     await db.commit()
-    logger.info("Subscription activated: user=%s tier=%s", user.id, target_tier)
+    logger.info("Subscription activated: user=%s tier=%s sub=%s", user.id, target_tier, subscription_id)
 
 
 async def _handle_subscription_updated(data: dict, db: DbSession) -> None:
@@ -398,6 +477,15 @@ async def _handle_subscription_updated(data: dict, db: DbSession) -> None:
             "trialing": "ACTIVE",
         }
         sub.status = status_map.get(sub_status, sub_status.upper() if sub_status else "ACTIVE")
+
+        # Sync current_period_end from Stripe for accurate expiry display
+        period_end_ts = (
+            data.get("current_period_end") if isinstance(data, dict)
+            else getattr(data, "current_period_end", None)
+        )
+        if period_end_ts:
+            sub.current_period_end = datetime.fromtimestamp(period_end_ts, tz=UTC)
+
         await db.commit()
         logger.info("Subscription synced: customer=%s status=%s", customer_id, sub.status)
     else:

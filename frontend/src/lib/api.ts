@@ -387,6 +387,13 @@ export const api = {
     });
   },
 
+  /** Open Stripe Customer Portal for managing subscription. */
+  createPortalSession: async () => {
+    return fetcher<{ portal_url: string }>("/billing/portal", {
+      method: "POST",
+    });
+  },
+
   // ─── User Profile ──────────────────────────────────────────────────────────
   updateProfile: async (data: { name?: string }) => {
     return fetcher<{ id: string; name: string }>("/users/me", {
