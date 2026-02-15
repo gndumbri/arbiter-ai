@@ -111,8 +111,8 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "APP_MODE", value = var.app_mode },
-      { name = "NODE_ENV", value = "production" },
+      { name = "APP_MODE", valueFrom = "${var.secrets_manager_arn}:APP_MODE::" },
+      { name = "NODE_ENV", valueFrom = "${var.secrets_manager_arn}:APP_MODE::" },
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
@@ -122,10 +122,13 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "EMAIL_FROM_NAME", value = var.email_from_name },
     ]
 
-    secrets = concat(
-      local.frontend_base_secrets,
-      local.include_optional_secrets ? local.frontend_brevo_secret : []
-    )
+
+    secrets = [
+      { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:AUTH_SECRET::" },
+      { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
+      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
+      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }
+    ]
 
     logConfiguration = {
       logDriver = "awslogs"
