@@ -20,13 +20,13 @@ export default function AgentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">My NPCs</h2>
-          <p className="text-muted-foreground text-sm sm:text-base">Custom AI personas trained on your rulesets.</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Ask the Arbiter</h2>
+          <p className="text-muted-foreground text-sm sm:text-base">Pick a game and get rules questions answered instantly.</p>
         </div>
         <Button asChild className="w-full sm:w-auto">
           <Link href="/dashboard/agents/new">
             <Plus className="mr-2 h-4 w-4" />
-            Recruit NPC
+            New Question
           </Link>
         </Button>
       </div>
@@ -42,14 +42,14 @@ export default function AgentsPage() {
       ) : agents?.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
           <Bot className="mb-4 h-12 w-12 text-muted-foreground" />
-          <h3 className="text-lg font-semibold">No NPCs on payroll</h3>
+          <h3 className="text-lg font-semibold">No sessions yet</h3>
           <p className="mb-4 text-sm text-muted-foreground">
-            Recruit one to answer rules questions your way.
+            Start asking rules questions for any game.
           </p>
           <Button asChild>
             <Link href="/dashboard/agents/new">
               <Plus className="mr-2 h-4 w-4" />
-              Create Agent
+              Start a Session
             </Link>
           </Button>
         </div>

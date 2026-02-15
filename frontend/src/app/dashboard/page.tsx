@@ -16,6 +16,16 @@ export default function DashboardPage() {
     refreshInterval: 5000, 
   });
 
+  // Fetch recent sessions for "Continue" section
+  const { data: agents } = useSWR("agents", api.listAgents, { onError: () => {} });
+  const recentGames = agents
+    ? agents
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        // Deduplicate by game_name — show most recent session per game
+        .filter((a, i, arr) => arr.findIndex((x) => x.game_name === a.game_name) === i)
+        .slice(0, 4)
+    : [];
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -25,6 +35,30 @@ export default function DashboardPage() {
         </div>
         <RulesetUploadDialog />
       </div>
+
+      {/* ─── Recent Games — Continue where you left off ──────────────── */}
+      {recentGames.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-lg font-semibold text-muted-foreground">Continue Asking</h3>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+            {recentGames.map((agent) => (
+              <Link
+                key={agent.id}
+                href={`/session/${agent.id}`}
+                className="group flex items-center gap-3 rounded-lg border border-border/50 bg-card p-3 hover:border-primary/50 hover:bg-muted/30 transition-all"
+              >
+                <MessageSquare className="h-4 w-4 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{agent.game_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(agent.created_at), { addSuffix: true })}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
