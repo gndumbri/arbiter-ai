@@ -21,7 +21,7 @@
 | **Reranker**    | FlashRank (default, local)     | —         | Cross-encoder scoring, no API key needed            |
 | **PDF Parsing** | Docling / Unstructured         | —         | Layout-aware PDF extraction                         |
 | **Frontend**    | Next.js 16+ (App Router)       | 16+       | PWA, React Server Components                        |
-| **Auth**        | NextAuth.js v5 + Brevo         | —         | Passwordless magic links, JWT sessions              |
+| **Auth**        | NextAuth.js v5 + AWS SES       | —         | Passwordless magic links, JWT sessions              |
 | **Billing**     | Stripe                         | —         | Subscriptions, webhooks                             |
 | **Config**      | pydantic-settings              | 2.0+      | Typed configuration from env vars                   |
 | **Logging**     | structlog                      | —         | Structured JSON logging with request IDs            |
@@ -97,12 +97,12 @@
 - Added one-shot maintenance scripts for production-safe sync runs: `backend/scripts/sync_catalog_live.py` and `backend/scripts/sync_open_rules.py`.
 - Added a deploy-grade backend preflight command (`backend/scripts/preflight.py`) plus `make preflight-sandbox` / `make preflight-production` gates for environment, DB, Redis, provider stack, and optional live Bedrock probes.
 - Added a repo GitHub Actions deploy workflow (`.github/workflows/deploy.yml`) that runs an ECS preflight task as a required gate before backend service deployment.
-- Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when Brevo is unavailable; production remains strict.
+- Frontend communication service now uses non-production fallback email delivery (console logger) so sandbox auth flows do not crash when SES is unavailable; production remains strict.
 - Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
 - Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
 - Frontend API base resolution now defaults to same-origin `/api/v1` in production when `NEXT_PUBLIC_API_URL` is unset (instead of `localhost`), preventing broken AWS browser calls.
 - Environment badge health checks now follow the same production-safe API base fallback (same-origin) instead of `localhost`.
-- Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe/Brevo to avoid startup failures when those keys are intentionally absent.
+- Terraform ECS wiring now parameterizes `APP_MODE`/URLs/CORS and maps frontend auth DB to `FRONTEND_DATABASE_URL`, with optional sandbox secret injection for Stripe to avoid startup failures when those keys are intentionally absent.
 - ECS task-definition health checks now avoid `curl` dependencies (backend uses Python stdlib probe; frontend uses Node fetch probe) for cleaner container startup on minimal base images.
 - Terraform environment defaults now consistently use `production` (not mixed `prod`/`production`), including RDS final-snapshot safeguards.
 - Chat session header now resolves and displays human-readable game name plus NPC/persona metadata (no raw truncated session-id title).

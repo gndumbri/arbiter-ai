@@ -39,7 +39,7 @@ def test_terraform_frontend_uses_frontend_database_secret_and_api_base() -> None
     assert '{ name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url }' in text
     assert '{ name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url }' in text
     assert ':FRONTEND_DATABASE_URL::' in text
-    assert ':BREVO_API_KEY::' in text
+    assert ':BREVO_API_KEY::' not in text
 
 
 def test_terraform_task_role_has_bedrock_permissions() -> None:

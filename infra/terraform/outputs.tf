@@ -58,3 +58,13 @@ output "redis_url" {
   description = "Constructed REDIS_URL — update this value in Secrets Manager"
   value       = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}/0"
 }
+
+output "ses_dkim_tokens" {
+  description = "DKIM tokens — create CNAME records for each: <token>._domainkey.<domain> → <token>.dkim.amazonses.com"
+  value       = aws_ses_domain_dkim.main.dkim_tokens
+}
+
+output "ses_verification_token" {
+  description = "SES domain verification token — create a TXT record: _amazonses.<domain> → <token>"
+  value       = aws_ses_domain_identity.main.verification_token
+}

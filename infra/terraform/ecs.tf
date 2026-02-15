@@ -70,7 +70,6 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${var.secrets_manager_arn}:STRIPE_WEBHOOK_SECRET::" },
       { name = "STRIPE_PRICE_ID", valueFrom = "${var.secrets_manager_arn}:STRIPE_PRICE_ID::" },
       { name = "COHERE_API_KEY", valueFrom = "${var.secrets_manager_arn}:COHERE_API_KEY::" },
-      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
     ]
 
     logConfiguration = {
@@ -114,12 +113,12 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url },
       { name = "EMAIL_FROM", value = var.email_from },
       { name = "EMAIL_FROM_NAME", value = var.email_from_name },
+      { name = "AWS_REGION", value = var.aws_region },
     ]
 
     secrets = [
       { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:AUTH_SECRET::" },
       { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
-      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
     ]
 
     logConfiguration = {

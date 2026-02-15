@@ -25,7 +25,8 @@
         { "name": "NEXT_PUBLIC_API_URL", "value": "/api/v1" },
         { "name": "EMAIL_FROM", "value": "noreply@arbiter-ai.com" },
         { "name": "EMAIL_FROM_NAME", "value": "Arbiter AI" },
-        { "name": "NODE_ENV", "value": "production" }
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "AWS_REGION", "value": "us-east-1" }
       ],
       "secrets": [
         {
@@ -35,10 +36,6 @@
         {
           "name": "DATABASE_URL",
           "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:FRONTEND_DATABASE_URL::"
-        },
-        {
-          "name": "BREVO_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:BREVO_API_KEY::"
         }
       ],
       "healthCheck": {

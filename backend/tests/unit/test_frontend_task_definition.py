@@ -21,7 +21,6 @@ def test_frontend_taskdef_includes_expected_runtime_secrets() -> None:
     required = {
         "AUTH_SECRET",
         "DATABASE_URL",
-        "BREVO_API_KEY",
     }
     assert required.issubset(secret_names)
 

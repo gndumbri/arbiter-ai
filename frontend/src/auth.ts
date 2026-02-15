@@ -123,7 +123,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
  * clients like Outlook and Apple mail, as this is confusing because it seems
  * like they are supposed to click on it to sign in.
  *
- * @note We are not using a template yet, but we could switch to Brevo templates later.
+ * @note We are not using a template yet, but we could switch to SES templates later.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function html(params: { url: string; host: string; theme: any }) {
