@@ -88,7 +88,7 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
       { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
-      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEYY::" },
+      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
     ]
 
     secrets = [
