@@ -11,33 +11,13 @@ resource "aws_ecs_cluster" "main" {
 }
 
 locals {
-  resolved_app_base_url = var.app_base_url != "" ? var.app_base_url : "http://${aws_lb.main.dns_name}"
+  resolved_app_base_url    = var.app_base_url != "" ? var.app_base_url : "http://${aws_lb.main.dns_name}"
   resolved_allowed_origins = var.allowed_origins != "" ? var.allowed_origins : local.resolved_app_base_url
   resolved_frontend_nextauth_url = (
     var.frontend_nextauth_url != ""
     ? var.frontend_nextauth_url
     : local.resolved_app_base_url
   )
-  include_optional_secrets = var.app_mode == "production" || var.inject_optional_sandbox_secrets
-
-  backend_base_secrets = [
-    { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
-    { name = "REDIS_URL", valueFrom = "${var.secrets_manager_arn}:REDIS_URL::" },
-    { name = "NEXTAUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:NEXTAUTH_SECRET::" },
-  ]
-  backend_stripe_secrets = [
-    { name = "STRIPE_SECRET_KEY", valueFrom = "${var.secrets_manager_arn}:STRIPE_SECRET_KEY::" },
-    { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${var.secrets_manager_arn}:STRIPE_WEBHOOK_SECRET::" },
-    { name = "STRIPE_PRICE_ID", valueFrom = "${var.secrets_manager_arn}:STRIPE_PRICE_ID::" },
-  ]
-
-  frontend_base_secrets = [
-    { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:NEXTAUTH_SECRET::" },
-    { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:FRONTEND_DATABASE_URL::" },
-  ]
-  frontend_brevo_secret = [
-    { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
-  ]
 }
 
 # --- Backend Task Definition ---
@@ -72,12 +52,26 @@ resource "aws_ecs_task_definition" "backend" {
       { name = "EMBEDDING_PROVIDER", value = "bedrock" },
       { name = "VECTOR_STORE_PROVIDER", value = "pgvector" },
       { name = "RERANKER_PROVIDER", value = "flashrank" },
+      { name = "PARSER_PROVIDER", value = "docling" },
+      { name = "PINECONE_INDEX_NAME", value = "arbiter-rules" },
     ]
 
-    secrets = concat(
-      local.backend_base_secrets,
-      local.include_optional_secrets ? local.backend_stripe_secrets : []
-    )
+    secrets = [
+      { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
+      { name = "REDIS_URL", valueFrom = "${var.secrets_manager_arn}:REDIS_URL::" },
+      { name = "NEXTAUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:NEXTAUTH_SECRET::" },
+      { name = "OPENAI_API_KEY", valueFrom = "${var.secrets_manager_arn}:OPENAI_API_KEY::" },
+      { name = "ANTHROPIC_API_KEY", valueFrom = "${var.secrets_manager_arn}:ANTHROPIC_API_KEY::" },
+      { name = "PINECONE_API_KEY", valueFrom = "${var.secrets_manager_arn}:PINECONE_API_KEY::" },
+      { name = "SUPABASE_URL", valueFrom = "${var.secrets_manager_arn}:SUPABASE_URL::" },
+      { name = "SUPABASE_ANON_KEY", valueFrom = "${var.secrets_manager_arn}:SUPABASE_ANON_KEY::" },
+      { name = "SUPABASE_JWT_SECRET", valueFrom = "${var.secrets_manager_arn}:SUPABASE_JWT_SECRET::" },
+      { name = "STRIPE_SECRET_KEY", valueFrom = "${var.secrets_manager_arn}:STRIPE_SECRET_KEY::" },
+      { name = "STRIPE_WEBHOOK_SECRET", valueFrom = "${var.secrets_manager_arn}:STRIPE_WEBHOOK_SECRET::" },
+      { name = "STRIPE_PRICE_ID", valueFrom = "${var.secrets_manager_arn}:STRIPE_PRICE_ID::" },
+      { name = "COHERE_API_KEY", valueFrom = "${var.secrets_manager_arn}:COHERE_API_KEY::" },
+      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
+    ]
 
     logConfiguration = {
       logDriver = "awslogs"
@@ -111,23 +105,21 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "APP_MODE", valueFrom = "${var.secrets_manager_arn}:APP_MODE::" },
-      { name = "NODE_ENV", valueFrom = "${var.secrets_manager_arn}:APP_MODE::" },
+      { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
+      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
       { name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url },
       { name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url },
       { name = "EMAIL_FROM", value = var.email_from },
       { name = "EMAIL_FROM_NAME", value = var.email_from_name },
     ]
 
-
     secrets = [
       { name = "AUTH_SECRET", valueFrom = "${var.secrets_manager_arn}:AUTH_SECRET::" },
       { name = "DATABASE_URL", valueFrom = "${var.secrets_manager_arn}:DATABASE_URL::" },
-      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
-      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" }
+      { name = "BREVO_API_KEY", valueFrom = "${var.secrets_manager_arn}:BREVO_API_KEY::" },
     ]
 
     logConfiguration = {
