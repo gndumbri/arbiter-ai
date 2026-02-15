@@ -347,6 +347,11 @@ export const api = {
     return fetcher<SavedRulingResponse[]>("/rulings/public");
   },
 
+  listPartyRulings: async (gameName?: string) => {
+    const qs = gameName ? `?game_name=${encodeURIComponent(gameName)}` : "";
+    return fetcher<SavedRulingResponse[]>(`/rulings/party${qs}`);
+  },
+
   saveRuling: async (data: {
     query: string;
     verdict_json: Record<string, unknown>;
@@ -395,8 +400,12 @@ export const api = {
   },
 
   // ─── User Profile ──────────────────────────────────────────────────────────
-  updateProfile: async (data: { name?: string }) => {
-    return fetcher<{ id: string; name: string }>("/users/me", {
+  getProfile: async () => {
+    return fetcher<{ id: string; email: string; name: string | null; role: string; default_ruling_privacy: string }>("/users/me");
+  },
+
+  updateProfile: async (data: { name?: string; default_ruling_privacy?: string }) => {
+    return fetcher<{ id: string; name: string; default_ruling_privacy: string }>("/users/me", {
       method: "PATCH",
       body: JSON.stringify(data),
     });

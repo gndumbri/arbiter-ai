@@ -1,0 +1,19 @@
+{
+  "name": "Arbiter AI — Tabletop Rules Judge",
+  "short_name": "Arbiter AI",
+  "description": "AI-powered rules adjudication for board games & tabletop RPGs.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#000000",
+  "background_color": "#0a0a0f",
+  "categories": ["games", "entertainment", "utilities"],
+  "icons": [
+    {
+      "src": "/next.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

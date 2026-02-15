@@ -47,6 +47,20 @@
   }
 }
 
+/* Utility: hide scrollbar while keeping scroll functional (mobile nav) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Faster tap response on mobile — removes 300ms delay */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
 /* Custom Scrollbar for that premium feel */
 ::-webkit-scrollbar {
   width: 8px;
