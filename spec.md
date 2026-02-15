@@ -61,6 +61,7 @@
 - Party member API responses now include `user_name` and `user_email` for UI display.
 - Mock API library routes now keep in-memory state for add/remove/favorite behavior during UI testing.
 - Shelf dashboard now renders claimed library games from `/api/v1/library` for immediate user feedback.
+- ECS backend task-definition baseline is now versioned at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
 
 ---
 

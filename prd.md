@@ -39,6 +39,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Dashboard top nav now removes redundant Settings tab (avatar menu remains) and promotes Ask as the primary right-side CTA.
 - Mock library endpoints now persist in-memory add/remove/favorite changes during runtime for realistic frontend testing.
 - Shelf dashboard now surfaces claimed library games so "added from Armory" state is visible in the main view.
+- AWS deployment now includes a repo-managed ECS backend task-definition template (`infra/ecs/backend-task-definition.json`) to prevent secret-key drift.
 
 ### F1: Game Library (Dashboard)
 

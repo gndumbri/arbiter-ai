@@ -218,6 +218,10 @@ docker push <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/arbiter-ai/frontend:lat
 aws ecs create-cluster --cluster-name arbiter-ai --capacity-providers FARGATE
 ```
 
+Use the repo template as the baseline task definition:
+
+- `infra/ecs/backend-task-definition.json`
+
 ### 3b. Task Definitions
 
 Create task definitions for both services. Key configuration:
@@ -229,6 +233,13 @@ Create task definitions for both services. Key configuration:
 
 > [!IMPORTANT]
 > The task execution role must have permissions to pull from ECR and read from Secrets Manager. The task role must also have Bedrock invoke permissions.
+
+Register the backend task definition from the template:
+
+```bash
+aws ecs register-task-definition \
+  --cli-input-json file://infra/ecs/backend-task-definition.json
+```
 
 ### 3c. Environment Variables
 

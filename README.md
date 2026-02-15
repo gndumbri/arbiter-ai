@@ -220,6 +220,8 @@ make lint
 
 See [docs/aws-deployment.md](docs/aws-deployment.md) for the AWS deployment guide covering ECS Fargate, RDS, ElastiCache, and CI/CD.
 
+ECS backend task-definition baseline is versioned in-repo at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
+
 ## License
 
 Proprietary — All rights reserved.
