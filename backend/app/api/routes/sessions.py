@@ -32,6 +32,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession
+from app.api.rate_limit import RateLimitDep
 from app.models.schemas import SessionCreate, SessionRead
 from app.models.tables import Session
 
@@ -44,11 +45,12 @@ async def create_session(
     body: SessionCreate,
     user: CurrentUser,
     db: DBSession,
+    limiter: RateLimitDep,
 ) -> SessionRead:
     """Create a new game session.
 
     Auth: JWT required.
-    Rate limit: None.
+    Rate limit: FREE=10/day, PRO=50/day.
     Tier: All tiers (session duration varies by tier).
 
     Args:
@@ -61,6 +63,13 @@ async def create_session(
         - FREE users: 24-hour sessions
         - PRO/ADMIN users: 30-day sessions
     """
+    # Enforce per-user daily session creation limit
+    await limiter.check_and_increment(
+        user_id=str(user["id"]),
+        tier=user["tier"],
+        category="session",
+    )
+
     # WHY: FREE users get shorter sessions to encourage upgrades,
     # PRO users get 30-day sessions for extended campaign play.
     duration_hours = 24 if user["tier"] == "FREE" else 24 * 30

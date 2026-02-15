@@ -20,7 +20,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { api, CatalogEntry, LibraryEntry } from "@/lib/api";
+import { api, CatalogEntry } from "@/lib/api";
 
 /**
  * Fallback games shown only when the backend catalog is unavailable.

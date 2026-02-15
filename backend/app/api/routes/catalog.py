@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db
-from app.models.tables import OfficialRuleset
+from app.models.tables import OfficialRuleset, Publisher
 
 router = APIRouter(prefix="/api/v1/catalog", tags=["catalog"])
 
@@ -95,15 +95,23 @@ async def list_verified_games(
     stmt = (
         select(OfficialRuleset)
         .options(selectinload(OfficialRuleset.publisher))
+        .where(
+            OfficialRuleset.status == "INDEXED",
+            OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+        )
     )
 
     # WHY: The search param powers the RulesetUploadDialog wizard (Step 1).
     # Users type a game name and see matching results in real-time.
     if search:
-        like_term = f"%{search}%"
+        # WHY: Escape SQL LIKE wildcard characters to prevent pattern injection.
+        # Without escaping, a search for "100%" would match everything.
+        escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like_term = f"%{escaped}%"
         stmt = stmt.where(
             OfficialRuleset.game_name.ilike(like_term)
             | OfficialRuleset.publisher_display_name.ilike(like_term)
+            | OfficialRuleset.publisher.has(Publisher.name.ilike(like_term))
         )
 
     result = await db.execute(stmt)
@@ -150,13 +158,17 @@ async def get_catalog_detail(
     stmt = (
         select(OfficialRuleset)
         .options(selectinload(OfficialRuleset.publisher))
-        .where(OfficialRuleset.game_slug == game_slug)
+        .where(
+            OfficialRuleset.game_slug == game_slug,
+            OfficialRuleset.status == "INDEXED",
+            OfficialRuleset.publisher.has(Publisher.verified.is_(True)),
+        )
     )
     result = await db.execute(stmt)
     ruleset = result.scalar_one_or_none()
 
     if not ruleset:
-        raise HTTPException(status_code=404, detail=f"Game '{game_slug}' not found in catalog.")
+        raise HTTPException(status_code=404, detail="Game not found in catalog.")
 
     return CatalogDetailEntry(
         id=ruleset.id,

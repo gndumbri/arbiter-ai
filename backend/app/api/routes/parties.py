@@ -14,10 +14,11 @@ from datetime import UTC, datetime, timedelta
 
 import jwt as pyjwt
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
+from app.api.rate_limit import RateLimitDep
 from app.config import get_settings
 from app.models.tables import Party, PartyGameShare, PartyMember
 
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/v1/parties", tags=["parties"])
 class CreatePartyRequest(BaseModel):
     """Request body for creating a new party."""
 
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
 
 
 class PartyResponse(BaseModel):
@@ -55,11 +56,16 @@ class PartyMemberResponse(BaseModel):
 
 
 @router.post("", response_model=PartyResponse, status_code=201)
-async def create_party(body: CreatePartyRequest, user: CurrentUser, db: DbSession) -> PartyResponse:
+async def create_party(
+    body: CreatePartyRequest,
+    user: CurrentUser,
+    db: DbSession,
+    limiter: RateLimitDep,
+) -> PartyResponse:
     """Create a new party. The creator becomes the OWNER.
 
     Auth: JWT required.
-    Rate limit: None.
+    Rate limit: FREE=5/hour, PRO=20/hour.
     Tier: All tiers (FREE, PRO, ADMIN).
 
     Args:
@@ -68,6 +74,13 @@ async def create_party(body: CreatePartyRequest, user: CurrentUser, db: DbSessio
     Returns:
         The created party with member_count=1 (the owner).
     """
+    # Enforce per-user hourly party creation limit
+    await limiter.check_and_increment(
+        user_id=str(user["id"]),
+        tier=user["tier"],
+        category="party",
+    )
+
     party = Party(
         name=body.name,
         owner_id=user["id"],
@@ -197,11 +210,12 @@ async def join_party(
     party_id: uuid.UUID,
     user: CurrentUser,
     db: DbSession,
+    limiter: RateLimitDep,
 ) -> dict:
     """Join a party as a MEMBER.
 
     Auth: JWT required.
-    Rate limit: None.
+    Rate limit: FREE=5/hour, PRO=20/hour.
     Tier: All tiers.
 
     Args:
@@ -213,6 +227,13 @@ async def join_party(
     Raises:
         HTTPException: 404 if party not found, 409 if already a member.
     """
+    # --- Enforce party action rate limit ---
+    await limiter.check_and_increment(
+        user_id=str(user["id"]),
+        tier=user["tier"],
+        category="party",
+    )
+
     # --- Validate party exists ---
     party_result = await db.execute(select(Party).where(Party.id == party_id))
     party = party_result.scalar_one_or_none()
@@ -347,6 +368,8 @@ async def create_invite_link(
         raise HTTPException(status_code=403, detail="Not a member of this party")
 
     settings = get_settings()
+    if not settings.nextauth_secret:
+        raise HTTPException(status_code=503, detail="Invite signing is not configured.")
     expires = datetime.now(UTC) + timedelta(hours=48)
 
     payload = {
@@ -357,9 +380,8 @@ async def create_invite_link(
     }
     token = pyjwt.encode(payload, settings.nextauth_secret, algorithm="HS256")
 
-    # WHY: Use the first allowed origin as the base URL for the invite link.
-    # In production this will be the real domain (e.g. arbiter-ai.com).
-    base_url = settings.allowed_origins.split(",")[0].strip()
+    # Use canonical app URL for share links (separate from CORS list).
+    base_url = settings.normalized_app_base_url
 
     return {
         "invite_url": f"{base_url}/invite/{token}",
@@ -381,6 +403,7 @@ async def join_via_invite_link(
     body: JoinViaLinkRequest,
     user: CurrentUser,
     db: DbSession,
+    limiter: RateLimitDep,
 ) -> dict:
     """Join a party using a signed invite token.
 
@@ -392,23 +415,26 @@ async def join_via_invite_link(
     """
 
     settings = get_settings()
+    if not settings.nextauth_secret:
+        raise HTTPException(status_code=503, detail="Invite verification is not configured.")
     try:
         payload = pyjwt.decode(
             body.token, settings.nextauth_secret, algorithms=["HS256"]
         )
+        if payload.get("sub") != "party_invite":
+            raise pyjwt.InvalidTokenError
+        party_id = uuid.UUID(payload["party_id"])
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=400, detail="Invite link has expired"
         ) from None
-    except pyjwt.InvalidTokenError:
+    except (pyjwt.InvalidTokenError, KeyError, TypeError, ValueError):
         raise HTTPException(
             status_code=400, detail="Invalid invite link"
         ) from None
 
-    party_id = uuid.UUID(payload["party_id"])
-
     # Reuse the existing join_party logic (validates party exists + no dupes)
-    return await join_party(party_id, user, db)
+    return await join_party(party_id, user, db, limiter)
 
 
 # ─── Remove Member ────────────────────────────────────────────────────────────

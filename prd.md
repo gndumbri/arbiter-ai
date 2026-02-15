@@ -23,6 +23,17 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 ## Feature Map
 
+### Implementation Snapshot (2026-02-15)
+
+- Production auth path now uses NextAuth server-side token minting and backend HS256 verification.
+- Ruleset upload/list/status endpoints are user-scoped and session-scoped, with mock-mode endpoint parity restored.
+- Vector retrieval now requires indexed rulesets for a session (no anonymous/session fallback namespace).
+- Current upload cap is 20 MB as a cost-control guardrail; tiered size limits remain a roadmap item.
+- Canonical `APP_BASE_URL` is now separate from CORS `ALLOWED_ORIGINS` for Stripe/invite link correctness.
+- IP abuse controls now use trusted proxy-depth parsing (`TRUSTED_PROXY_HOPS`) to prevent spoofed `X-Forwarded-For`.
+- Party invite join flow now validates token payload shape and reuses standard party rate limits without runtime errors.
+- New environment templates added for AWS sandbox/production bootstrap (`backend/.env.*.example`, `frontend/.env.*.example`).
+
 ### F1: Game Library (Dashboard)
 
 **User Story:** As a gamer, I want to save the games I play so I can quickly ask rules questions without re-uploading files every time.
@@ -48,7 +59,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 
 | Capability           | Behavior                                         |
 | -------------------- | ------------------------------------------------ |
-| Drag-and-drop upload | PDF files, ≤ 50 MB                               |
+| Drag-and-drop upload | PDF files, ≤ 20 MB (current guardrail)            |
 | Progress indicator   | Real-time status (scanning → parsing → indexing) |
 | Rejection feedback   | Clear error if file isn't a rulebook             |
 | Security             | Virus scan, sandboxed processing                 |
@@ -105,7 +116,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 | ------------------ | ---------------- | -------------- | --------------- |
 | Sessions           | 24-hour expiry   | 30-day expiry  | ✅ Backend      |
 | Active rulesets    | 2                | 10             | ⚠️ Aspirational |
-| Max file size      | 25 MB            | 50 MB          | ⚠️ Aspirational |
+| Max file size      | 20 MB            | 20 MB          | ✅ Backend      |
 | Queries/day        | 5 (configurable) | Unlimited      | ✅ Backend      |
 | Game library slots | 5                | Unlimited      | ⚠️ Aspirational |
 | Saved rulings      | ✅               | ✅             | ✅              |

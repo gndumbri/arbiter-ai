@@ -3,6 +3,13 @@
 Reads APP_MODE from settings and provides helpers for runtime tier
 detection, startup validation, and environment metadata.
 
+Provider key requirements:
+    bedrock    → AWS credentials (IAM role, env vars, or ~/.aws/credentials)
+    openai     → OPENAI_API_KEY env var
+    anthropic  → ANTHROPIC_API_KEY env var
+    flashrank  → (none, runs locally)
+    pgvector   → (none, uses DATABASE_URL)
+
 Mode overview:
     mock       → All external calls faked, DB bypassed, auth bypassed.
     sandbox    → Real DB + sandbox API keys (Stripe test mode, etc.).
@@ -17,6 +24,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from app.config import get_settings
 
@@ -80,6 +88,50 @@ def get_environment_info() -> EnvironmentInfo:
 # ─── Startup Validation ──────────────────────────────────────────────────────
 
 
+def _warn_missing_provider_keys(
+    settings: Any,
+    *,
+    warn_only: bool = True,
+    collect: list[str] | None = None,
+) -> None:
+    """Check that the active providers have their required keys/creds.
+
+    Args:
+        settings: The Settings instance.
+        warn_only: If True, log warnings. If False, append to ``collect``.
+        collect: List to append missing key names to (used in production mode).
+    """
+    def _flag(key_name: str, msg: str) -> None:
+        if warn_only:
+            logger.warning("%s — %s Consider APP_MODE=mock for frontend-only dev.", key_name, msg)
+        elif collect is not None:
+            collect.append(key_name)
+
+    # ── LLM provider ─────────────────────────────────────────────────────
+    if settings.llm_provider == "openai" and not settings.openai_api_key:
+        _flag("OPENAI_API_KEY", "Needed because LLM_PROVIDER=openai.")
+    elif settings.llm_provider == "anthropic" and not settings.anthropic_api_key:
+        _flag("ANTHROPIC_API_KEY", "Needed because LLM_PROVIDER=anthropic.")
+    elif settings.llm_provider == "bedrock":
+        # boto3 auto-discovers creds; check if something is available
+        try:
+            import boto3
+            session = boto3.Session(region_name=settings.aws_region)
+            creds = session.get_credentials()
+            if creds is None:
+                _flag(
+                    "AWS_CREDENTIALS",
+                    "Bedrock requires AWS creds (env vars, ~/.aws/credentials, or IAM role).",
+                )
+        except Exception:
+            _flag("AWS_CREDENTIALS", "Could not verify AWS credentials for Bedrock.")
+
+    # ── Embedding provider (same logic) ───────────────────────────────────
+    if settings.embedding_provider == "openai" and not settings.openai_api_key:
+        _flag("OPENAI_API_KEY", "Needed because EMBEDDING_PROVIDER=openai.")
+    # Bedrock embeddings use same AWS creds — already checked above.
+
+
 def validate_environment() -> None:
     """Validate environment configuration on startup.
 
@@ -95,11 +147,43 @@ def validate_environment() -> None:
     """
     settings = get_settings()
 
+    def _allowed_origins() -> list[str]:
+        allowed = getattr(settings, "allowed_origins_list", None)
+        if isinstance(allowed, list):
+            return allowed
+        raw = getattr(settings, "allowed_origins", "")
+        return [origin.strip() for origin in str(raw).split(",") if origin.strip()]
+
+    def _app_base_url() -> str:
+        normalized = getattr(settings, "normalized_app_base_url", None)
+        if isinstance(normalized, str) and normalized:
+            return normalized
+        return str(getattr(settings, "app_base_url", "")).rstrip("/")
+
+    def _is_valid_http_url(url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
     if settings.app_mode not in VALID_MODES:
         raise ValueError(
             f"Invalid APP_MODE='{settings.app_mode}'. "
             f"Must be one of: {sorted(VALID_MODES)}"
         )
+
+    allowed_origins = _allowed_origins()
+    app_base_url = _app_base_url()
+
+    if "*" in allowed_origins:
+        if settings.app_mode == MODE_PRODUCTION:
+            raise RuntimeError("ALLOWED_ORIGINS cannot contain '*' in production.")
+        logger.warning("ALLOWED_ORIGINS contains '*'. This is unsafe outside local development.")
+
+    invalid_origins = [origin for origin in allowed_origins if not _is_valid_http_url(origin)]
+    if invalid_origins:
+        raise RuntimeError(f"ALLOWED_ORIGINS has invalid URL(s): {', '.join(invalid_origins)}")
+
+    if not _is_valid_http_url(app_base_url):
+        raise RuntimeError("APP_BASE_URL must be a full http(s) URL (example: https://app.example.com).")
 
     logger.info(
         "Environment initialized: mode=%s, env=%s",
@@ -119,17 +203,17 @@ def validate_environment() -> None:
             "🧪 SANDBOX MODE — Real DB, sandbox API keys. "
             "Stripe uses test mode."
         )
+        if not settings.nextauth_secret:
+            logger.warning(
+                "NEXTAUTH_SECRET/AUTH_SECRET not set — authenticated routes will reject tokens."
+            )
         # WHY: Warn (don't crash) about missing optional keys in sandbox.
         # Developers may not have every service configured locally.
         if not settings.stripe_secret_key:
             logger.warning(
                 "STRIPE_SECRET_KEY not set — billing endpoints will return 503."
             )
-        if not settings.openai_api_key and settings.llm_provider == "openai":
-            logger.warning(
-                "OPENAI_API_KEY not set — adjudication will fail. "
-                "Consider APP_MODE=mock for frontend-only dev."
-            )
+        _warn_missing_provider_keys(settings, warn_only=True)
         return
 
     # Production mode — stricter checks
@@ -141,18 +225,18 @@ def validate_environment() -> None:
     if not settings.nextauth_secret:
         missing_keys.append("NEXTAUTH_SECRET")
 
-    # WHY: Check the active LLM provider's key specifically rather than
-    # requiring all keys. Users only need keys for their chosen provider.
-    if settings.llm_provider == "openai" and not settings.openai_api_key:
-        missing_keys.append("OPENAI_API_KEY")
-    if settings.llm_provider == "anthropic" and not settings.anthropic_api_key:
-        missing_keys.append("ANTHROPIC_API_KEY")
+    _warn_missing_provider_keys(settings, warn_only=False, collect=missing_keys)
 
     if missing_keys:
+        message = (
+            "Production mode requires these env vars: "
+            + ", ".join(missing_keys)
+        )
         logger.error(
             "Production mode requires these env vars: %s",
             ", ".join(missing_keys),
         )
+        raise RuntimeError(message)
 
 
 def to_dict(info: EnvironmentInfo) -> dict[str, Any]:

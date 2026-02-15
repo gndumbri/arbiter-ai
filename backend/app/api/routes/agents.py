@@ -53,10 +53,8 @@ async def list_agents(user: CurrentUser, db: DbSession):
         {
             "id": str(s.id),
             "game_name": s.game_name,
-            # WHY: Default persona until we add a persona column.
-            # The frontend Agent type expects this field.
-            "persona": "Standard Judge",
-            "system_prompt_override": None,
+            "persona": s.persona,
+            "system_prompt_override": s.system_prompt_override,
             "created_at": s.created_at.isoformat(),
             "active_ruleset_ids": (
                 [str(rid) for rid in s.active_ruleset_ids]

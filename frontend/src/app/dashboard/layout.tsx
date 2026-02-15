@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Shield, Settings } from "lucide-react";
+import { Shield } from "lucide-react";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import EnvironmentBadge from "@/components/ui/EnvironmentBadge";
 
 export default function DashboardLayout({
   children,
@@ -57,6 +58,10 @@ export default function DashboardLayout({
       <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-6">
         {children}
       </main>
+      {/* WHY: EnvironmentBadge is positioned fixed (bottom-left) and
+          hidden in production. It provides devs a constant visual
+          indicator of which backend tier (mock/sandbox/prod) is active. */}
+      <EnvironmentBadge />
     </div>
   );
 }

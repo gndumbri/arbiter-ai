@@ -81,7 +81,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       };
 
       setMessages(prev => [...prev, aiMsg]);
-    } catch (error) {
+    } catch {
       toast({
         title: "The Arbiter Fumbled!",
         description: "Failed to get a verdict. Roll again (try again).",

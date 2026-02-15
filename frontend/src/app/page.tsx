@@ -65,7 +65,7 @@ export default function LandingPage() {
                   size="lg"
                   className="rounded-full px-8 text-lg shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
                 >
-                  Roll for Initiative
+                  Get Started
                 </Button>
               )}
               <Button asChild variant="outline" size="lg" className="rounded-full">

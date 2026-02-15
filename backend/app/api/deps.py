@@ -18,7 +18,7 @@ from typing import Annotated
 import jwt
 import redis.asyncio as aioredis
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -76,9 +76,6 @@ async def get_current_user(
     using NEXTAUTH_SECRET, and upserts the user into the local database.
     Returns a dict with {id, email, name, tier, role} keys.
 
-    In development mode (when NEXTAUTH_SECRET is empty), signature
-    verification is skipped to allow dev login without a secret.
-
     Args:
         authorization: Bearer token from the Authorization header.
         db: Async database session for user upsert.
@@ -98,16 +95,24 @@ async def get_current_user(
     token = authorization.split(" ", 1)[1]
     settings = get_settings()
 
+    # WHY: Any mode besides mock must enforce signature verification.
+    # Allowing unsigned JWTs in sandbox makes admin/user auth trivially forgeable.
+    if not settings.nextauth_secret:
+        if settings.is_mock:
+            # Real routes are not mounted in mock mode, but keep this defensive fallback.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "UNAUTHORIZED", "message": "Auth is bypassed only in mock mode"},
+            )
+        logger.error("NEXTAUTH_SECRET/AUTH_SECRET not set — rejecting auth tokens")
+        raise HTTPException(
+            status_code=503,
+            detail="The Arbiter can't verify your credentials right now. Please try again later!",
+        )
+
     try:
         # NextAuth uses HS256 JWTs signed with NEXTAUTH_SECRET
-        secret = settings.nextauth_secret
-        if secret:
-            # Production: verify signature
-            payload = jwt.decode(token, secret, algorithms=["HS256"])
-        else:
-            # Development fallback: decode without verification
-            logger.warning("NEXTAUTH_SECRET not set — JWT signature verification disabled")
-            payload = jwt.decode(token, options={"verify_signature": False})
+        payload = jwt.decode(token, settings.nextauth_secret, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -149,8 +154,15 @@ async def get_current_user(
 
     if user_record is None:
         # First login — create user record
+        # Prefer stable UUID from token sub when possible to avoid duplicate users.
+        user_id = uuid.uuid4()
+        if sub:
+            try:
+                user_id = uuid.UUID(sub)
+            except ValueError:
+                pass
         user_record = User(
-            id=uuid.uuid4(),
+            id=user_id,
             email=email or f"{sub}@arbiter.local",
             name=name,
             role="USER",
@@ -169,12 +181,12 @@ async def get_current_user(
     result = await db.execute(
         select(Subscription).where(
             Subscription.user_id == user_record.id,
-            Subscription.status == "ACTIVE",
+            func.lower(Subscription.status) == "active",
         )
     )
     subscription = result.scalar_one_or_none()
     if subscription:
-        tier = subscription.tier
+        tier = subscription.plan_tier
 
     await db.commit()
 

@@ -30,6 +30,23 @@ from app.core.registry import register_provider
 logger = logging.getLogger(__name__)
 
 
+def _parse_namespace_uuid(namespace: str) -> uuid.UUID | None:
+    """Parse namespace into a UUID.
+
+    Accepts raw UUID strings and legacy ``ruleset_<uuid>`` format.
+    Returns None when parsing fails.
+    """
+    if not namespace:
+        return None
+    candidate = namespace
+    if namespace.startswith("ruleset_"):
+        candidate = namespace.removeprefix("ruleset_")
+    try:
+        return uuid.UUID(candidate)
+    except ValueError:
+        return None
+
+
 class PgVectorStoreProvider:
     """Postgres + pgvector vector store with namespace (ruleset_id) support.
 
@@ -61,13 +78,21 @@ class PgVectorStoreProvider:
         from app.models.tables import RuleChunk
 
         async with self._session_factory() as session:
-            ruleset_id = uuid.UUID(namespace) if namespace else None
+            ruleset_id = _parse_namespace_uuid(namespace)
+            if namespace and ruleset_id is None:
+                logger.warning("Ignoring invalid namespace for upsert: %s", namespace)
             count = 0
 
             for v in vectors:
+                try:
+                    chunk_id = uuid.UUID(v.id)
+                except ValueError:
+                    # WHY: Keep compatibility with legacy non-UUID vector IDs.
+                    chunk_id = uuid.uuid5(uuid.NAMESPACE_URL, f"{namespace}:{v.id}")
+
                 # Check if chunk already exists (upsert semantics)
                 existing = await session.execute(
-                    select(RuleChunk).where(RuleChunk.id == uuid.UUID(v.id))
+                    select(RuleChunk).where(RuleChunk.id == chunk_id)
                 )
                 chunk = existing.scalar_one_or_none()
 
@@ -78,7 +103,7 @@ class PgVectorStoreProvider:
                 else:
                     # Insert new chunk
                     session.add(RuleChunk(
-                        id=uuid.UUID(v.id),
+                        id=chunk_id,
                         ruleset_id=ruleset_id,
                         chunk_index=v.metadata.get("chunk_index", 0),
                         chunk_text=v.metadata.get("text", ""),
@@ -123,7 +148,11 @@ class PgVectorStoreProvider:
             )
 
             if namespace:
-                stmt = stmt.where(RuleChunk.ruleset_id == uuid.UUID(namespace))
+                ruleset_id = _parse_namespace_uuid(namespace)
+                if ruleset_id is None:
+                    logger.warning("Invalid namespace for query: %s", namespace)
+                    return []
+                stmt = stmt.where(RuleChunk.ruleset_id == ruleset_id)
 
             result = await session.execute(stmt)
             rows = result.all()
@@ -155,7 +184,12 @@ class PgVectorStoreProvider:
         from app.models.tables import RuleChunk
 
         async with self._session_factory() as session:
-            chunk_ids = [uuid.UUID(i) for i in ids]
+            chunk_ids = []
+            for item in ids:
+                try:
+                    chunk_ids.append(uuid.UUID(item))
+                except ValueError:
+                    chunk_ids.append(uuid.uuid5(uuid.NAMESPACE_URL, f"{namespace}:{item}"))
             await session.execute(
                 delete(RuleChunk).where(RuleChunk.id.in_(chunk_ids))
             )
@@ -171,9 +205,13 @@ class PgVectorStoreProvider:
         from app.models.tables import RuleChunk
 
         async with self._session_factory() as session:
+            ruleset_id = _parse_namespace_uuid(namespace)
+            if ruleset_id is None:
+                logger.warning("Invalid namespace for delete_namespace: %s", namespace)
+                return
             await session.execute(
                 delete(RuleChunk).where(
-                    RuleChunk.ruleset_id == uuid.UUID(namespace)
+                    RuleChunk.ruleset_id == ruleset_id
                 )
             )
             await session.commit()
@@ -188,9 +226,12 @@ class PgVectorStoreProvider:
         from app.models.tables import RuleChunk
 
         async with self._session_factory() as session:
+            ruleset_id = _parse_namespace_uuid(namespace)
+            if ruleset_id is None:
+                return {"vector_count": 0, "namespace": namespace}
             result = await session.execute(
                 select(func.count(RuleChunk.id)).where(
-                    RuleChunk.ruleset_id == uuid.UUID(namespace)
+                    RuleChunk.ruleset_id == ruleset_id
                 )
             )
             count = result.scalar() or 0

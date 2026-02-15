@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+from app.api.deps import get_current_user
 from app.main import app
 from app.workers.tasks import ingest_ruleset
 
@@ -14,26 +15,45 @@ def test_upload_ruleset_dispatches_task(
 ) -> None:
     """Upload endpoint should dispatch Celery task and return 202."""
     session_id = uuid.uuid4()
-    
+    user_id = uuid.uuid4()
+
+    # Mock auth + session ownership lookup.
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": user_id,
+        "email": "test@example.com",
+        "tier": "FREE",
+        "role": "USER",
+    }
+    mock_session = MagicMock()
+    res_count = MagicMock()
+    res_count.scalar_one.return_value = 0
+    res_session = MagicMock()
+    res_session.scalar_one_or_none.return_value = mock_session
+    db_session.execute.side_effect = [res_count, res_session]
+
     # Mock the entire Celery task object in the module
-    with patch("app.api.routes.rules.ingest_ruleset") as mock_task:
-        response = client.post(
-            f"/api/v1/sessions/{session_id}/rulesets",
-            files={"file": ("rules.pdf", b"%PDF-1.4...", "application/pdf")},
-            data={"game_name": "Test Game", "source_type": "BASE"},
-        )
-        
-        assert response.status_code == 202
-        data = response.json()
-        assert data["status"] == "PROCESSING"
-        assert "ruleset_id" in data
-        
-        # Verify task delay was called
-        mock_task.delay.assert_called_once()
-        call_args = mock_task.delay.call_args[1]
-        assert call_args["game_name"] == "Test Game"
-        assert call_args["source_type"] == "BASE"
-        assert str(session_id) == call_args["session_id"]
+    try:
+        with patch("app.api.routes.rules.ingest_ruleset") as mock_task:
+            response = client.post(
+                f"/api/v1/sessions/{session_id}/rulesets",
+                files={"file": ("rules.pdf", b"%PDF-1.4...", "application/pdf")},
+                data={"game_name": "Test Game", "source_type": "BASE"},
+            )
+
+            assert response.status_code == 202
+            data = response.json()
+            assert data["status"] == "PROCESSING"
+            assert "ruleset_id" in data
+
+            # Verify task delay was called
+            mock_task.delay.assert_called_once()
+            call_args = mock_task.delay.call_args[1]
+            assert call_args["game_name"] == "Test Game"
+            assert call_args["source_type"] == "BASE"
+            assert str(session_id) == call_args["session_id"]
+            assert call_args["user_id"] == str(user_id)
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 @patch("app.workers.tasks.IngestionPipeline")

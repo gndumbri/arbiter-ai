@@ -25,7 +25,10 @@ mock_user = {
 
 @pytest.fixture
 def override_user():
-    app.dependency_overrides[get_current_user] = lambda: mock_user
+    """Override auth dep with a mock FREE-tier user."""
+    def _mock_user():
+        return mock_user
+    app.dependency_overrides[get_current_user] = _mock_user
     yield
     app.dependency_overrides.pop(get_current_user, None)
 
@@ -34,7 +37,7 @@ def test_judge_billing_limit_reached(client, db_session, override_user):
     
     # Mock sequence of db.execute calls in judge.py:
     # 1. Session query -> Return valid non-expired session
-    # 2. Namespace resolution query -> Return empty (uses fallback)
+    # 2. Namespace resolution query -> Return indexed ruleset namespace
     # 3. Subscription query -> Return FREE subscription
     # 4. Tier config query -> Return FREE tier with limit 5
     # 5. Usage count query -> Return 5 (Limit Reached)
@@ -45,9 +48,11 @@ def test_judge_billing_limit_reached(client, db_session, override_user):
     res_session = MagicMock()
     res_session.scalar_one_or_none.return_value = mock_session
 
-    # Result 2: Namespace resolution - no indexed rulesets (empty result)
+    # Result 2: Namespace resolution
     res_namespaces = MagicMock()
-    res_namespaces.all.return_value = []
+    res_namespaces.all.return_value = [
+        ("223e4567-e89b-12d3-a456-426614174001",),
+    ]
 
     # Result 3: Subscription query
     mock_subscription = MagicMock(spec=Subscription)
@@ -83,7 +88,7 @@ def test_judge_billing_pro_unlimited(client, db_session, override_user):
     """Test that PRO tier user (unlimited) does not get blocked."""
     
     # 1. Session query -> valid session
-    # 2. Namespace resolution -> empty
+    # 2. Namespace resolution -> indexed ruleset exists
     # 3. Subscription -> PRO
     # 4. Tier Config -> Limit -1 (unlimited)
     # No usage check! (Logic skips if limit == -1)
@@ -94,7 +99,9 @@ def test_judge_billing_pro_unlimited(client, db_session, override_user):
     res_session.scalar_one_or_none.return_value = mock_session
 
     res_namespaces = MagicMock()
-    res_namespaces.all.return_value = []
+    res_namespaces.all.return_value = [
+        ("223e4567-e89b-12d3-a456-426614174001",),
+    ]
 
     mock_subscription = MagicMock(spec=Subscription)
     mock_subscription.plan_tier = "PRO"

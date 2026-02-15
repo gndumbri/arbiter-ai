@@ -3,7 +3,7 @@
 **Version:** 2.0 (MVP)
 **Classification:** STRICT_COMPLIANCE (Legal Constraints Apply)
 **Platform:** Progressive Web App (PWA) — installable on desktop & mobile
-**Core Stack:** Python 3.12+ (Backend), Next.js 14+ (Frontend/PWA), Pinecone Serverless (Vector DB), Redis (Queue), PostgreSQL (Relational), Stripe (Billing), OpenAI / Anthropic (LLM)
+**Core Stack:** Python 3.12+ (Backend), Next.js 14+ (Frontend/PWA), pgvector (Vector DB), Redis (Queue), PostgreSQL (Relational), Stripe (Billing), AWS Bedrock — Claude 3.5 Sonnet (LLM) + Titan Embed v2 (Embeddings)
 
 ---
 
@@ -20,7 +20,7 @@
 | 1   | **Zero-Retention Default** | We store _vectors_ and _metadata_ only. Original PDFs are purged after indexing (Free Tier) to respect copyright.                |
 | 2   | **Citation is King**       | Every answer must map to specific retrieved chunks with page numbers. No citation = "Insufficient context" response.             |
 | 3   | **Hierarchy Aware**        | Errata overrides Expansion, Expansion overrides Base game rules. Encoded via `source_priority`.                                  |
-| 4   | **Tenant Isolation**       | Each user's data lives in its own Pinecone namespace. Queries _never_ cross namespace boundaries.                                |
+| 4   | **Tenant Isolation**       | Each user's data lives in its own pgvector partition (scoped by `ruleset_id`). Queries _never_ cross user boundaries.            |
 | 5   | **Graceful Degradation**   | On low confidence or conflicting rules, the system must surface the conflict transparently rather than hallucinate a resolution. |
 
 ### 1.2 Target Users
@@ -45,8 +45,8 @@ graph TD
         Worker -->|1. Validate & Scan| Scanner["Malware Scanner (ClamAV)"]
         Worker -->|2. Layout Parse| Parser["Docling / Unstructured"]
         Worker -->|3. Semantic Chunk| Chunker["Recursive Semantic Splitter"]
-        Worker -->|4. Embed| Embedder["Embedding Model (text-embedding-3-small)"]
-        Worker -->|5. Index| VectorDB[("Pinecone Serverless")]
+        Worker -->|4. Embed| Embedder["Embedding Model (Bedrock Titan v2)"]
+        Worker -->|5. Index| VectorDB[("pgvector (PostgreSQL)")]
         Worker -->|6. PURGE source file| Cleaner["Secure File Wiper"]
     end
 
@@ -59,7 +59,7 @@ graph TD
     end
 
     API -->|Response| User
-    API --> DB[("PostgreSQL (Supabase)")]
+    API --> DB[("PostgreSQL + pgvector")]
     API --> Cache["Redis Cache"]
 ```
 
@@ -71,19 +71,19 @@ graph TD
 | Task Queue       | Redis + Celery                             | Async PDF ingestion jobs with retry and DLQ                          |
 | Ingestion Worker | Python (Celery task)                       | PDF parsing, chunking, embedding, indexing, cleanup                  |
 | Layout Parser    | Docling (primary), Unstructured (fallback) | Multi-column PDF parsing, table detection, reading order             |
-| Embedding        | OpenAI `text-embedding-3-small` (1536d)    | Chunk vectorization                                                  |
-| Vector Store     | Pinecone Serverless                        | Semantic search, namespace-per-tenant isolation                      |
-| Reranker         | Cohere Rerank v3 or `bge-reranker-v2-m3`   | Cross-encoder reranking of candidate chunks                          |
-| LLM Judge        | OpenAI GPT-4o / Anthropic Claude 3.5       | Query expansion, verdict generation with citations                   |
-| Relational DB    | PostgreSQL (Supabase)                      | Users, sessions, ruleset metadata, audit logs                        |
+| Embedding        | AWS Bedrock Titan Embed v2 (1024d)         | Chunk vectorization (provider-swappable via env var)                 |
+| Vector Store     | pgvector (PostgreSQL extension)            | Semantic search, per-ruleset isolation via FK                        |
+| Reranker         | FlashRank (local, no API key)              | Cross-encoder reranking of candidate chunks                          |
+| LLM Judge        | AWS Bedrock Claude 3.5 Sonnet              | Query expansion, verdict generation with citations                   |
+| Relational DB    | PostgreSQL                                 | Users, sessions, ruleset metadata, audit logs                        |
 | Cache            | Redis                                      | Session cache, rate-limit counters, query result cache               |
 | Frontend         | Next.js 14 (App Router)                    | PWA shell, chat UI, citation viewer, file upload, session management |
 | Billing          | Stripe Checkout + Customer Portal          | Subscription management, FREE→PRO upgrades, invoicing                |
-| Auth             | Supabase Auth (or Auth0)                   | Email/password + OAuth (Google, GitHub), JWT issuance                |
+| Auth             | NextAuth.js v5 + Brevo                     | Passwordless magic links, JWT sessions                               |
 
 ### 2.3 Data Schema
 
-#### A. Relational (PostgreSQL / Supabase)
+#### A. Relational (PostgreSQL)
 
 > [!IMPORTANT]
 > All user-generated data is scoped per-user via `user_id` foreign keys. Publisher-owned data (official rulesets) is shared read-only and scoped by `publisher_id`. Users access official rulesets via their personal library.
@@ -187,13 +187,15 @@ query_audit_log (
 );
 ```
 
-#### B. Vector Store (Pinecone Serverless)
+#### B. Vector Store (pgvector — PostgreSQL Extension)
 
-| Setting        | Value                           |
-| -------------- | ------------------------------- |
-| **Index Name** | `arbiter-rules`                 |
-| **Dimensions** | 1536 (`text-embedding-3-small`) |
-| **Metric**     | Cosine                          |
+| Setting        | Value                                     |
+| -------------- | ----------------------------------------- |
+| **Extension**  | `pgvector` (`CREATE EXTENSION vector`)    |
+| **Dimensions** | 1024 (Bedrock Titan Embed v2)             |
+| **Metric**     | L2 (`<->` operator)                       |
+| **Storage**    | `rule_chunks.embedding` column in main DB |
+| **Isolation**  | `ruleset_id` FK on `rule_chunks` table    |
 
 **Namespace Strategy (Dual):**
 
@@ -257,7 +259,7 @@ flowchart TD
         E -->|Fallback| E2["Unstructured fallback"]
         E --> F["Context-Aware Chunking"]
         F --> G["Generate Embeddings"]
-        G --> H["Upsert to Pinecone"]
+        G --> H["Upsert to pgvector"]
         H --> I{"Verify Index Count"}
         I -->|Mismatch| I1["Retry (max 3)"]
         I -->|Match| J["HARD DELETE Source PDF"]
@@ -271,7 +273,7 @@ flowchart TD
 
 2. **Validation**
    - File type: PDF only (check magic bytes `%PDF-`, not just extension)
-   - File size: ≤ 50 MB, page count: ≤ 500 pages
+   - File size: ≤ 20 MB, page count: ≤ 500 pages
    - **Hash Blocklist:** SHA-256 hash checked against `file_blocklist` table. Known-bad files rejected instantly.
    - Duplicate detection: hash check against existing `ruleset_metadata` for the session
 
@@ -317,12 +319,12 @@ This is the strongest defense against illegal/inappropriate content. If it's not
    - **Table Handling:** Convert tables to Markdown format and chunk as atomic units (never split a table row)
 
 9. **Embedding**
-   - Model: OpenAI `text-embedding-3-small` (1536 dimensions)
+   - Model: AWS Bedrock Titan Embed v2 (1024 dimensions)
    - Batch size: 100 chunks per API call
    - Include retry with exponential backoff
 
 10. **Indexing**
-    - Upsert to Pinecone namespace `user_{user_id}`
+    - Upsert to `rule_chunks` table in PostgreSQL (pgvector)
     - Vector ID format: `{ruleset_id}_{chunk_index}`
     - After upsert, verify `namespace.describe_index_stats()` count matches expected chunk count
 
@@ -360,15 +362,15 @@ flowchart TD
    - **Decomposition:** For complex queries involving multiple rules (e.g., "Can a Fighter with the Bless spell attack a creature with the Shield spell while flanking?"), decompose into sub-queries and retrieve for each independently
 
 2. **Hybrid Search (Multi-Namespace)**
-   - **Dense:** Embed the expanded query → cosine similarity search in Pinecone (top 50)
+   - **Dense:** Embed the expanded query → L2 nearest-neighbor search in pgvector (top 50)
    - **Sparse:** BM25 keyword search on chunk text for exact game terms (e.g., "Meeple", "Victory Point")
    - **Fusion:** Reciprocal Rank Fusion (RRF) to merge both result sets
-   - **Namespace Fan-Out:** Search both `user_{user_id}` and any `official_*` namespaces for games in the user's library, then merge results
+   - **Namespace Fan-Out:** Search across `ruleset_id` filters (official + user rulesets in library), then merge results
    - **Multi-Hop Retrieval:** If the initial result set references other rules by name (e.g., "see Combat Phase rules"), perform a **second retrieval pass** targeting those referenced sections to ensure complete context
 
 3. **Cross-Encoder Reranking**
    - Take top 50 fused results
-   - Score each (query, chunk) pair with a cross-encoder model (Cohere Rerank v3 or `bge-reranker-v2-m3`)
+   - Score each (query, chunk) pair with a cross-encoder model (FlashRank local reranker)
    - Select top 10 by cross-encoder score
 
 4. **Hierarchy Re-sort**
@@ -452,17 +454,17 @@ flowchart TD
 | Tier | Session Duration | Max Rulesets             | Max File Size | Queries/Min | PDF Retention                           |
 | ---- | ---------------- | ------------------------ | ------------- | ----------- | --------------------------------------- |
 | FREE | 24 hours         | 2 (1 Base + 1 Expansion) | 25 MB         | 10          | Purged immediately                      |
-| PRO  | 30 days          | 10                       | 50 MB         | 60          | Purged after indexing (vectors persist) |
+| PRO  | 30 days          | 10                       | 20 MB         | 60          | Purged after indexing (vectors persist) |
 
 - Sessions auto-expire via a scheduled cleanup job (Celery Beat)
-- On expiry: delete Pinecone namespace vectors, mark `ruleset_metadata.status` → `EXPIRED`
+- On expiry: delete pgvector chunks, mark `ruleset_metadata.status` → `EXPIRED`
 - All session data is scoped to the authenticated user — users can only access their own sessions
 
 ### 3.4 Feature: User Accounts & Billing (Stripe)
 
 #### Account Lifecycle
 
-1. **Sign Up:** User registers via Supabase Auth (email/password or OAuth — Google, GitHub)
+1. **Sign Up:** User registers via NextAuth v5 (magic link email via Brevo)
 2. **Free Tier:** Default. No payment required. Limited sessions and query rates.
 3. **Upgrade to PRO:** User clicks "Upgrade" → Stripe Checkout session created → redirected to Stripe-hosted payment page → webhook confirms subscription → `users.tier` updated to `PRO`
 4. **Manage Subscription:** PRO users access Stripe Customer Portal to update payment method, cancel, or view invoices
@@ -490,7 +492,7 @@ flowchart TD
 All user data is strictly isolated:
 
 - **PostgreSQL:** Every row has `user_id` FK; all queries include `WHERE user_id = $1`
-- **Pinecone:** Each user gets their own namespace (`user_{user_id}`); queries never cross namespaces
+- **pgvector:** Per-ruleset isolation via `ruleset_id` FK on `rule_chunks`; queries filter by user's active rulesets
 - **Redis:** Rate-limit keys scoped to `rate:{user_id}`
 - **File uploads:** Temp files stored in `/{tmp}/arbiter/{user_id}/` and purged after processing
 
@@ -544,13 +546,13 @@ If a regulator or lawyer asks _"How do you prevent your platform from being used
 | **Snippet Cap**            | Citation `snippet` truncated to 300 chars max in API response                                      |
 | **No Full Reconstruction** | Rate-limit sequential queries + monitor for systematic chunk harvesting patterns                   |
 | **Anti-Scraping**          | 10 queries/min (FREE), 60 queries/min (PRO), sliding window via Redis                              |
-| **Tenant Isolation**       | Pinecone queries scoped to `user_{user_id}` + `official_*` namespaces. No global queries.          |
+| **Tenant Isolation**       | pgvector queries scoped by `ruleset_id` FK. No cross-user queries possible.                        |
 | **Input Sanitization**     | Reject queries > 500 chars. Strip HTML/script tags. Parameterize all SQL.                          |
 | **Hash Blocklist**         | SHA-256 hash of every upload checked against `file_blocklist`. Known-bad files rejected instantly. |
 | **Relevance Filter**       | LLM classifies first 3 pages — non-rulebook content deleted immediately.                           |
 | **Sandboxed Processing**   | PDF parsing runs in ephemeral containers with no DB/network access.                                |
 | **Source Purge**           | PDF hard-deleted (overwrite + unlink) after successful indexing. No temp files survive.            |
-| **Auth**                   | JWT-based (Supabase Auth). All endpoints require valid token except health check.                  |
+| **Auth**                   | JWT-based (NextAuth v5). All endpoints require valid token except health check.                    |
 | **HTTPS**                  | TLS required in production. HSTS headers enforced.                                                 |
 | **Report Button**          | Required for any future social/sharing features. Content report → review → blocklist.              |
 
@@ -620,7 +622,7 @@ flowchart TD
 
 | Audience       | Auth Method            | Header                        |
 | -------------- | ---------------------- | ----------------------------- |
-| **Users**      | JWT (Supabase Auth)    | `Authorization: Bearer <jwt>` |
+| **Users**      | JWT (NextAuth v5)      | `Authorization: Bearer <jwt>` |
 | **Publishers** | API Key                | `X-Publisher-Key: <api_key>`  |
 | **Webhooks**   | Signature Verification | `Stripe-Signature: <sig>`     |
 
@@ -628,7 +630,7 @@ flowchart TD
 
 #### `GET /health`
 
-Returns service status, DB connectivity, Pinecone connectivity.
+Returns service status, DB connectivity, pgvector connectivity.
 
 #### `POST /api/v1/sessions`
 
@@ -977,13 +979,15 @@ arbiter-ai/
 │   │   │   │   ├── billing.py      # Stripe checkout + tiers
 │   │   │   │   ├── library.py      # User game library CRUD
 │   │   │   │   └── users.py        # User profile management
+│   │   │   │   └── mock_routes.py  # Mock API (APP_MODE=mock, no DB/auth)
 │   │   │   ├── deps.py         # Dependency injection (DB, Auth, Redis)
 │   │   │   ├── rate_limit.py   # Redis-backed rate limiter
-│   │   │   └── middleware.py   # RequestID, Logging, Error handling
+│   │   │   └── middleware.py   # RequestID, Logging, Env header, Error handling
 │   │   ├── core/
 │   │   │   ├── ingestion.py    # 3-layer ingestion pipeline
 │   │   │   ├── adjudication.py # Adjudication engine orchestrator
 │   │   │   ├── chunking.py     # Recursive semantic splitter
+│   │   │   ├── environment.py  # Multi-env manager (mock/sandbox/production)
 │   │   │   ├── protocols.py    # Provider Protocol interfaces
 │   │   │   └── providers/
 │   │   │       ├── registry.py          # Singleton provider factory
@@ -992,9 +996,18 @@ arbiter-ai/
 │   │   │       ├── bedrock_llm.py       # AWS Bedrock Claude provider
 │   │   │       ├── bedrock_embedding.py # AWS Bedrock Titan v2
 │   │   │       ├── pinecone_store.py    # Pinecone vector store
+│   │   │       ├── pg_vector_store.py   # pgvector local store
 │   │   │       ├── cohere_reranker.py   # Cohere Rerank v3
 │   │   │       ├── flashrank_reranker.py # FlashRank local reranker
+│   │   │       ├── mock_llm.py          # Mock LLM (canned verdicts)
+│   │   │       ├── mock_embedding.py    # Mock embeddings (deterministic vectors)
+│   │   │       ├── mock_vector_store.py # Mock vector store (in-memory)
+│   │   │       ├── mock_reranker.py     # Mock reranker (passthrough)
 │   │   │       └── docling_parser.py    # Docling PDF parser
+│   │   ├── mock/               # Mock environment (APP_MODE=mock)
+│   │   │   ├── __init__.py
+│   │   │   ├── fixtures.py     # Static mock data (users, sessions, catalog...)
+│   │   │   └── factory.py      # On-demand mock object generation
 │   │   ├── models/             # SQLAlchemy / Pydantic models
 │   │   ├── db/                 # Database session, queries
 │   │   └── workers/
@@ -1168,6 +1181,27 @@ arbiter-ai/
 - [x] Frontend: `output: standalone` in next.config.ts for Docker deployment
 - [x] Frontend: `plan_tier` field alignment across api.ts and settings page
 
+### Phase 10: Multi-Environment System (Mock / Sandbox / Production)
+
+Arbiter AI supports three runtime tiers controlled by the `APP_MODE` environment variable. This system enables frontend development, integration testing, and production operation without code changes.
+
+| Mode           | Database | Auth        | External APIs | Use Case                        |
+| -------------- | -------- | ----------- | ------------- | ------------------------------- |
+| **mock**       | ❌ None  | ❌ Bypassed | ❌ None       | Frontend dev, UI testing, demos |
+| **sandbox**    | ✅ Real  | ✅ Real     | 🧪 Test keys  | Integration testing, staging    |
+| **production** | ✅ Real  | ✅ Real     | ✅ Live keys  | Live application                |
+
+- [x] Config: `APP_MODE` setting in `config.py` with `is_mock`/`is_sandbox`/`is_production` properties
+- [x] Environment manager: `core/environment.py` with startup validation and feature flags
+- [x] Mock data: `mock/fixtures.py` (static fixture data) + `mock/factory.py` (on-demand generation)
+- [x] Mock providers: `mock_llm.py`, `mock_embedding.py`, `mock_vector_store.py`, `mock_reranker.py`
+- [x] Provider registry: Mock providers auto-registered via existing `register_provider()` pattern
+- [x] Mock routes: `mock_routes.py` — mirrors all real endpoints, returns fixture data
+- [x] Conditional startup: `main.py` mounts mock OR real routes based on `APP_MODE`
+- [x] Environment middleware: `X-Arbiter-Env` response header on every request
+- [x] Frontend badge: `EnvironmentBadge.tsx` — floating indicator (🎭 MOCK / 🧪 SANDBOX / hidden in prod)
+- [x] Tests: `test_environment.py`, `test_mock_providers.py`, `test_mock_routes.py`
+
 ---
 
 ## 11. Deployment Strategy
@@ -1213,6 +1247,13 @@ npm run dev                  # Start Next.js on port 3000
 ### Environment Variables Required
 
 ```env
+# ─── Environment Mode ───
+# Controls which tier the app runs in. See Phase 10 for details.
+# mock       = No DB, no auth, no external APIs (frontend dev)
+# sandbox    = Real DB + sandbox API keys (integration testing)
+# production = Live everything
+APP_MODE=sandbox
+
 # LLM
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...

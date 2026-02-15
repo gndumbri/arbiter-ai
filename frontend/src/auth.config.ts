@@ -20,18 +20,6 @@ export const authConfig = {
       }
       return true;
     },
-    session({ session, token }) {
-      if (token && session.user) {
-        session.user.id = token.sub as string;
-      }
-      return session;
-    },
-    jwt({ token, user }) {
-        if (user) {
-            token.sub = user.id;
-        }
-        return token;
-    }
   },
   providers: [], // Configured in Node-side auth.ts
 } satisfies NextAuthConfig;

@@ -9,92 +9,30 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Users, ScrollText, Gamepad2, Building2, BarChart3, Shield } from "lucide-react";
 import { motion } from "framer-motion";
-
-interface AdminStats {
-  total_users: number;
-  total_sessions: number;
-  total_queries: number;
-  total_rulesets: number;
-  total_publishers: number;
-}
-
-interface AdminUser {
-  id: string;
-  email: string;
-  name: string | null;
-  role: string;
-  created_at: string | null;
-}
-
-interface AdminPublisher {
-  id: string;
-  name: string;
-  slug: string;
-  contact_email: string;
-  verified: boolean;
-  created_at: string | null;
-}
-
-interface AdminTier {
-  id: string;
-  name: string;
-  daily_query_limit: number;
-}
+import { api, AdminPublisher, AdminStats, AdminTier, AdminUser } from "@/lib/api";
+import useSWR from "swr";
 
 export default function AdminPage() {
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [publishers, setPublishers] = useState<AdminPublisher[]>([]);
-  const [tiers, setTiers] = useState<AdminTier[]>([]);
   const [activeTab, setActiveTab] = useState<"overview" | "users" | "publishers" | "tiers">("overview");
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: "Bearer dev-token",
-  };
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "users") fetchUsers();
-    if (activeTab === "publishers") fetchPublishers();
-    if (activeTab === "tiers") fetchTiers();
-  }, [activeTab]);
-
-  async function fetchStats() {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/admin/stats`, { headers });
-      if (res.ok) setStats(await res.json());
-    } catch {}
-  }
-  async function fetchUsers() {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/admin/users`, { headers });
-      if (res.ok) setUsers(await res.json());
-    } catch {}
-  }
-  async function fetchPublishers() {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/admin/publishers`, { headers });
-      if (res.ok) setPublishers(await res.json());
-    } catch {}
-  }
-  async function fetchTiers() {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/admin/tiers`, { headers });
-      if (res.ok) setTiers(await res.json());
-    } catch {}
-  }
+  const { data: stats } = useSWR<AdminStats>("admin/stats", api.getAdminStats);
+  const { data: users = [] } = useSWR<AdminUser[]>(
+    activeTab === "users" ? "admin/users" : null,
+    api.listAdminUsers
+  );
+  const { data: publishers = [] } = useSWR<AdminPublisher[]>(
+    activeTab === "publishers" ? "admin/publishers" : null,
+    api.listAdminPublishers
+  );
+  const { data: tiers = [] } = useSWR<AdminTier[]>(
+    activeTab === "tiers" ? "admin/tiers" : null,
+    api.listAdminTiers
+  );
 
   const statCards = stats
     ? [
@@ -151,7 +89,7 @@ export default function AdminPage() {
           animate={{ opacity: 1, y: 0 }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4"
         >
-          {statCards.map((s, i) => (
+          {statCards.map((s) => (
             <Card key={s.label} className="bg-zinc-900/50 border-zinc-800">
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">

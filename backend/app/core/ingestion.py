@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import uuid
 from pathlib import Path
 
 from app.core.chunking import Chunk, chunk_document
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ─── Constants ─────────────────────────────────────────────────────────────────
 
 PDF_MAGIC_BYTES = b"%PDF-"
-MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_MB = 20
 MAX_PAGE_COUNT = 500
 
 
@@ -86,13 +87,14 @@ class IngestionPipeline:
             game_name: Name of the game
             source_type: BASE, EXPANSION, or ERRATA
             source_priority: 0=Base, 10=Expansion, 100=Errata
-            namespace: Pinecone namespace (defaults to user_{user_id})
+            namespace: Vector namespace (defaults to ruleset_id)
             blocklist_hashes: Set of blocked file hashes
 
         Returns:
             IngestionResult with chunk count and status
         """
-        target_namespace = namespace or f"user_{user_id}"
+        # WHY: In pgvector, namespace maps directly to ruleset_id UUID.
+        target_namespace = namespace or ruleset_id
         path = Path(file_path)
 
         try:
@@ -104,6 +106,12 @@ class IngestionPipeline:
 
             # ── Layer 3: Parse → Chunk → Embed → Index ──
             parsed = await self._parser.parse(file_path)
+            page_count = int(parsed.metadata.get("page_count") or 0)
+            if page_count and page_count > MAX_PAGE_COUNT:
+                raise IngestionError(
+                    "VALIDATION_ERROR",
+                    f"File has {page_count} pages (max {MAX_PAGE_COUNT})",
+                )
             logger.info(
                 "Parsed %d sections from %s",
                 len(parsed.sections),
@@ -254,15 +262,21 @@ class IngestionPipeline:
         """Build VectorRecord objects with full metadata."""
         vectors = []
         for chunk, embedding in zip(chunks, embeddings, strict=True):
-            vector_id = f"{ruleset_id}_{chunk.chunk_index}"
+            vector_id = str(
+                uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"{ruleset_id}:{chunk.chunk_index}",
+                )
+            )
             vectors.append(
                 VectorRecord(
                     id=vector_id,
                     vector=embedding,
                     metadata={
-                        "text": chunk.text[:1000],  # Pinecone metadata limit
+                        "text": chunk.text,
                         "page_number": chunk.page_number,
                         "section_header": chunk.header_path,
+                        "chunk_index": chunk.chunk_index,
                         "source_type": source_type,
                         "source_priority": source_priority,
                         "is_official": is_official,
