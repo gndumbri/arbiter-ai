@@ -261,11 +261,11 @@ resource "aws_ecs_task_definition" "frontend" {
     }]
 
     environment = [
-      { name = "APP_MODE", value = var.app_mode },
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
+      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
       { name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url },
       { name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url },
       # Sandbox-only tester bypass gate (forced off outside sandbox).
@@ -273,6 +273,7 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "EMAIL_PROVIDER", value = lower(var.email_provider) },
       { name = "EMAIL_FROM", value = var.email_from },
       { name = "EMAIL_FROM_NAME", value = var.email_from_name },
+      { name = "AWS_REGION", value = var.aws_region },
     ]
 
     secrets = concat(

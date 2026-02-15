@@ -125,9 +125,6 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_price_id: str = ""
 
-    # ─── Email (Brevo / Sendinblue) ───────────────────────────────────────────
-    brevo_api_key: str = ""
-
     # ─── Crowdsource Ruling Cache ─────────────────────────────────────────────
     # When True, /rulings/cache-lookup checks public rulings before calling LLM.
     use_ruling_cache: bool = False

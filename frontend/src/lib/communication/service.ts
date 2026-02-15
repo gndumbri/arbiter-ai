@@ -135,7 +135,10 @@ export class CommunicationService {
       options.providerConfigError ??
       (this.providerConfigured ? "" : configError || "Email provider is not configured.");
 
-    // Override hooks used by tests.
+    // In production and sandbox, use SES (IAM credentials are provided by the
+    // ECS task role). In mock mode, always use the console fallback.
+    const useSES = this.appMode !== "mock";
+
     if (options.transactionalProvider) {
       this.transactionalProvider = options.transactionalProvider;
     } else {
