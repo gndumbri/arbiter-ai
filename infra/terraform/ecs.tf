@@ -87,6 +87,7 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
       { name = "AUTH_TRUST_HOST", value = "true" },
+      { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
     ]
 
     secrets = [
