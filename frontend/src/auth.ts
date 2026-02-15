@@ -7,6 +7,7 @@ import Email from "next-auth/providers/email";
 import Credentials from "next-auth/providers/credentials";
 import { authConfig } from "./auth.config";
 import { communication } from "@/lib/communication/service";
+import { getSandboxBypassUser } from "@/lib/auth/sandbox-bypass";
 
 function base64UrlEncode(value: string): string {
   return Buffer.from(value).toString("base64url");
@@ -95,23 +96,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
     Credentials({
       id: "credentials",
-      name: "Dev Login",
+      name: "Sandbox Login",
       credentials: {
         email: { label: "Email", type: "email" },
       },
       authorize: async (credentials) => {
-        if (process.env.NODE_ENV !== "development") return null;
-
-        const email = credentials.email as string;
-        // Allow specific dev emails or just checking format
-        if (email === "kasey.kaplan@gmail.com") {
-          return {
-            id: "f6f4aede-0673-49ab-8c63-cf569273c267",
-            email,
-            name: "Kasey Kaplan (Dev)",
-          };
-        }
-        return null;
+        return getSandboxBypassUser(
+          (credentials?.email as string | undefined) ?? null,
+          process.env.APP_MODE,
+          process.env.SANDBOX_EMAIL_BYPASS_ENABLED
+        );
       },
     }),
   ],
@@ -123,7 +117,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
  * clients like Outlook and Apple mail, as this is confusing because it seems
  * like they are supposed to click on it to sign in.
  *
- * @note We are not using a template yet, but we could switch to SES templates later.
+ * @note We are not using provider templates yet; this body is shared across SES/Brevo flows.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function html(params: { url: string; host: string; theme: any }) {

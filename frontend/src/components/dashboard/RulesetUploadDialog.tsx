@@ -82,6 +82,7 @@ export function RulesetUploadDialog() {
   const [searchQuery, setSearchQuery] = useState("");
   const [catalogEntries, setCatalogEntries] = useState<CatalogEntry[]>([]);
   const [searchResults, setSearchResults] = useState<CatalogEntry[]>([]);
+  const [usingCatalogFallback, setUsingCatalogFallback] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedGame, setSelectedGame] = useState<CatalogEntry | null>(null);
   const [customGameName, setCustomGameName] = useState("");
@@ -97,6 +98,7 @@ export function RulesetUploadDialog() {
       setSearchQuery("");
       setCatalogEntries([]);
       setSearchResults([]);
+      setUsingCatalogFallback(false);
       setSelectedGame(null);
       setCustomGameName("");
       setFile(null);
@@ -115,11 +117,12 @@ export function RulesetUploadDialog() {
       try {
         const entries = await api.listCatalog();
         if (cancelled) return;
-        const usableEntries = entries.length > 0 ? entries : FALLBACK_CATALOG_GAMES;
-        setCatalogEntries(usableEntries);
-        setSearchResults(usableEntries.slice(0, 60));
+        setUsingCatalogFallback(false);
+        setCatalogEntries(entries);
+        setSearchResults(entries.slice(0, 60));
       } catch {
         if (cancelled) return;
+        setUsingCatalogFallback(true);
         setCatalogEntries(FALLBACK_CATALOG_GAMES);
         setSearchResults(FALLBACK_CATALOG_GAMES);
       } finally {
@@ -319,6 +322,12 @@ export function RulesetUploadDialog() {
               />
             </div>
 
+            {usingCatalogFallback && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Backend unavailable. Showing a limited offline game list.
+              </div>
+            )}
+
             {/* Search results */}
             <div className="max-h-[300px] overflow-y-auto space-y-1">
               {isSearching && (
@@ -360,6 +369,12 @@ export function RulesetUploadDialog() {
                     <PlusCircle className="h-4 w-4" />
                     Create &quot;{searchQuery}&quot; as Custom Game
                   </Button>
+                </div>
+              )}
+
+              {!isSearching && searchQuery.length === 0 && searchResults.length === 0 && (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  Armory catalog is empty. Run the catalog seed script, or create a custom game.
                 </div>
               )}
 
@@ -406,7 +421,7 @@ export function RulesetUploadDialog() {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Upload a PDF of the game&apos;s rulebook (max 50 MB).
+                Upload a PDF of the game&apos;s rulebook (max 20 MB).
               </p>
             </div>
             <div className="flex justify-end gap-3 pt-4">

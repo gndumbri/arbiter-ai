@@ -27,6 +27,7 @@ describe("CommunicationService", () => {
 
     const service = new CommunicationService({
       appMode: "sandbox",
+      emailProvider: "ses",
       transactionalProvider: primary,
       fallbackProvider: fallback,
     });
@@ -46,6 +47,7 @@ describe("CommunicationService", () => {
 
     const service = new CommunicationService({
       appMode: "production",
+      emailProvider: "ses",
       transactionalProvider: primary,
       fallbackProvider: fallback,
     });
@@ -56,12 +58,40 @@ describe("CommunicationService", () => {
     expect(fallbackSend).not.toHaveBeenCalled();
   });
 
+  it("throws in production when SES config is missing", async () => {
+    const service = new CommunicationService({
+      appMode: "production",
+      emailProvider: "ses",
+      emailServer: "",
+      sesSmtpHost: "",
+      sesSmtpUser: "",
+      sesSmtpPass: "",
+    });
+
+    await expect(service.sendTransactionalEmail(sampleEmail)).rejects.toThrow(
+      "EMAIL_PROVIDER=ses requires EMAIL_SERVER or SES_SMTP_HOST/SES_SMTP_USER/SES_SMTP_PASS in production email flows."
+    );
+  });
+
+  it("throws in production when Brevo config is selected but key is missing", async () => {
+    const service = new CommunicationService({
+      appMode: "production",
+      emailProvider: "brevo",
+      brevoApiKey: "",
+    });
+
+    await expect(service.sendTransactionalEmail(sampleEmail)).rejects.toThrow(
+      "EMAIL_PROVIDER=brevo requires BREVO_API_KEY in production email flows."
+    );
+  });
+
   it("uses primary provider when send succeeds", async () => {
     const primarySend = vi.fn().mockResolvedValue("primary-id");
     const primary = new StubProvider(primarySend);
 
     const service = new CommunicationService({
       appMode: "sandbox",
+      emailProvider: "ses",
       transactionalProvider: primary,
     });
 
@@ -69,5 +99,15 @@ describe("CommunicationService", () => {
 
     expect(id).toBe("primary-id");
     expect(primarySend).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows console provider in production for explicit emergency fallback mode", async () => {
+    const service = new CommunicationService({
+      appMode: "production",
+      emailProvider: "console",
+    });
+
+    const id = await service.sendTransactionalEmail(sampleEmail);
+    expect(id.startsWith("console-")).toBe(true);
   });
 });

@@ -86,6 +86,12 @@ make backend    # → http://localhost:8000
 make frontend   # → http://localhost:3000
 ```
 
+If the frontend shows offline fallback data after a restart, confirm backend health first:
+
+```bash
+curl http://localhost:8000/health
+```
+
 Or use Docker Compose for everything:
 
 ```bash
@@ -193,11 +199,18 @@ For split backend/frontend DB drivers in AWS, keep both keys in the secret paylo
 | `AUTH_SECRET`     | ✅       | JWT signing key (must match backend) |
 | `AUTH_TRUST_HOST` | Dev only | Set to `true` for localhost          |
 | `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
-| `NEXT_PUBLIC_API_URL` | Recommended | Backend API base (`/api/v1` recommended in prod) |
+| `NEXT_PUBLIC_API_URL` | Optional | Backend API base (defaults to same-origin `/api/v1`) |
+| `BACKEND_ORIGIN` | Dev optional | Next.js local proxy target (default `http://localhost:8000`) |
 | `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
-| `AWS_REGION`      | Optional | AWS region for SES (default `us-east-1`) |
-| `EMAIL_FROM`      | Optional | Sender address (default `noreply@arbiter-ai.com`) |
+| `EMAIL_PROVIDER`  | Recommended | `ses` (default), `brevo`, or `console` |
+| `EMAIL_SERVER`    | Required for SES in production | SMTP URI (recommended for SES via Secrets Manager) |
+| `SES_SMTP_*`      | Optional alt to `EMAIL_SERVER` | Host/port/user/pass config for SES SMTP |
+| `BREVO_API_KEY`   | Only when `EMAIL_PROVIDER=brevo` | Brevo API key |
+| `SANDBOX_EMAIL_BYPASS_ENABLED` | Sandbox optional | `true` enables allowlisted credentials bypass |
+| `EMAIL_FROM`      | Optional | Sender address (default `noreply@getquuie.com`) |
 | `EMAIL_FROM_NAME` | Optional | Sender display name (default `Arbiter AI`) |
+
+Local dev default: leave `NEXT_PUBLIC_API_URL` unset and Next.js will call `/api/v1` same-origin, then proxy to `BACKEND_ORIGIN` (`http://localhost:8000` by default).
 
 ## API Documentation
 
@@ -291,6 +304,8 @@ cd backend && uv run python -m scripts.preflight --expected-mode production --pr
 See [docs/aws-deployment.md](docs/aws-deployment.md) for the AWS deployment guide covering ECS Fargate, RDS, ElastiCache, and CI/CD.
 GitHub Actions deploy gate is versioned at `.github/workflows/deploy.yml` and requires preflight success before ECS rollout.
 For ECS, runtime config comes from task-definition environment/secrets injection, not local `.env` files.
+Terraform provisions four ECS services (`backend`, `frontend`, `worker`, `beat`) plus a shared EFS upload mount so async ingestion works across backend/worker tasks.
+Deploy workflow supports sandbox/prod targeting via `deploy_mode`/`tf_state_key` inputs (or repo vars `DEPLOY_MODE`/`TF_STATE_KEY`).
 
 ECS backend task-definition baseline is versioned in-repo at `infra/ecs/backend-task-definition.json` (Bedrock + pgvector, no Pinecone secret mapping).
 

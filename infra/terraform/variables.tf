@@ -61,7 +61,7 @@ variable "next_public_api_url" {
 variable "email_from" {
   description = "Default sender email for frontend auth emails"
   type        = string
-  default     = "noreply@arbiter-ai.com"
+  default     = "noreply@getquuie.com"
 }
 
 variable "email_from_name" {
@@ -71,15 +71,26 @@ variable "email_from_name" {
 }
 
 variable "inject_optional_sandbox_secrets" {
-  description = "When true, include optional sandbox secret mappings (Stripe). Production always includes them."
+  description = "When true, include optional sandbox secret mappings (Stripe + selected email provider). Production always includes them."
   type        = bool
   default     = false
 }
 
-variable "ses_domain" {
-  description = "Domain to verify with SES for sending email (e.g. arbiter-ai.com)"
+variable "sandbox_email_bypass_enabled" {
+  description = "Enable temporary sandbox-only credentials bypass for allowlisted tester emails."
+  type        = bool
+  default     = true
+}
+
+variable "email_provider" {
+  description = "Frontend email provider (ses|brevo|console). Controls which optional secret keys ECS references."
   type        = string
-  default     = "arbiter-ai.com"
+  default     = "ses"
+
+  validation {
+    condition     = contains(["ses", "brevo", "console"], lower(var.email_provider))
+    error_message = "email_provider must be one of: ses, brevo, console."
+  }
 }
 
 variable "vpc_cidr" {
@@ -130,6 +141,30 @@ variable "frontend_memory" {
   default     = 512
 }
 
+variable "worker_cpu" {
+  description = "CPU units for worker task"
+  type        = number
+  default     = 512
+}
+
+variable "worker_memory" {
+  description = "Memory (MiB) for worker task"
+  type        = number
+  default     = 1024
+}
+
+variable "beat_cpu" {
+  description = "CPU units for beat task"
+  type        = number
+  default     = 256
+}
+
+variable "beat_memory" {
+  description = "Memory (MiB) for beat task"
+  type        = number
+  default     = 512
+}
+
 variable "backend_desired_count" {
   description = "Number of backend tasks"
   type        = number
@@ -140,6 +175,24 @@ variable "frontend_desired_count" {
   description = "Number of frontend tasks"
   type        = number
   default     = 1
+}
+
+variable "worker_desired_count" {
+  description = "Number of Celery worker tasks (set to 0 only if async ingestion is intentionally disabled)"
+  type        = number
+  default     = 1
+}
+
+variable "beat_desired_count" {
+  description = "Number of Celery beat scheduler tasks (set to 0 to disable periodic catalog/rules sync jobs)"
+  type        = number
+  default     = 1
+}
+
+variable "uploads_dir" {
+  description = "Shared upload directory mounted by backend/worker tasks"
+  type        = string
+  default     = "/tmp/arbiter_uploads"
 }
 
 variable "secrets_manager_arn" {

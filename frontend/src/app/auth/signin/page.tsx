@@ -3,7 +3,9 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSmartBack } from "@/hooks/use-smart-back";
+import { normalizeEmail, shouldAttemptSandboxBypassFromClient } from "@/lib/auth/sandbox-bypass";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,18 +16,31 @@ import { motion } from "framer-motion";
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
   const goBack = useSmartBack("/");
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    if (process.env.NODE_ENV === "development" && email === "kasey.kaplan@gmail.com") {
-        await signIn("credentials", { email, callbackUrl: "/dashboard" });
-    } else {
-        await signIn("email", { email, callbackUrl: "/dashboard" });
+    const normalizedEmail = normalizeEmail(email);
+
+    if (shouldAttemptSandboxBypassFromClient(normalizedEmail)) {
+      const result = await signIn("credentials", {
+        email: normalizedEmail,
+        callbackUrl: "/dashboard",
+        redirect: false,
+      });
+
+      if (result && !result.error) {
+        router.push(result.url || "/dashboard");
+        router.refresh();
+        setIsLoading(false);
+        return;
+      }
     }
-    
+
+    await signIn("email", { email: normalizedEmail, callbackUrl: "/dashboard" });
     setIsLoading(false);
   };
 

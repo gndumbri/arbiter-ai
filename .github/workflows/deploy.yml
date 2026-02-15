@@ -8,6 +8,20 @@ on:
       - "frontend/**"
       - "infra/**"
   workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: "Target environment mode for Terraform/app config"
+        required: false
+        default: production
+        type: choice
+        options:
+          - sandbox
+          - production
+      tf_state_key:
+        description: "Terraform backend state key override (example: sandbox/terraform.tfstate)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   id-token: write
@@ -16,6 +30,8 @@ permissions:
 env:
   AWS_REGION: us-east-1
   PROJECT_NAME: arbiter-ai
+  DEFAULT_DEPLOY_MODE: production
+  DEFAULT_TF_STATE_KEY: prod/terraform.tfstate
 
 jobs:
   changes:
@@ -130,8 +146,30 @@ jobs:
         with:
           terraform_version: "~> 1.5"
 
+      - name: Resolve deploy context
+        id: context
+        run: |
+          DEPLOY_MODE="${{ github.event.inputs.deploy_mode }}"
+          if [ -z "$DEPLOY_MODE" ]; then
+            DEPLOY_MODE="${{ vars.DEPLOY_MODE }}"
+          fi
+          if [ -z "$DEPLOY_MODE" ]; then
+            DEPLOY_MODE="${DEFAULT_DEPLOY_MODE}"
+          fi
+
+          TF_STATE_KEY="${{ github.event.inputs.tf_state_key }}"
+          if [ -z "$TF_STATE_KEY" ]; then
+            TF_STATE_KEY="${{ vars.TF_STATE_KEY }}"
+          fi
+          if [ -z "$TF_STATE_KEY" ]; then
+            TF_STATE_KEY="${DEPLOY_MODE}/terraform.tfstate"
+          fi
+
+          echo "deploy_mode=${DEPLOY_MODE}" >> "$GITHUB_OUTPUT"
+          echo "tf_state_key=${TF_STATE_KEY}" >> "$GITHUB_OUTPUT"
+
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
 
       - name: Determine image tags
         id: tags
@@ -150,6 +188,9 @@ jobs:
       - name: Terraform Plan
         run: |
           terraform plan \
+            -var="environment=${{ steps.context.outputs.deploy_mode }}" \
+            -var="app_mode=${{ steps.context.outputs.deploy_mode }}" \
+            -var="app_env=${{ steps.context.outputs.deploy_mode }}" \
             -var="backend_image_tag=${{ steps.tags.outputs.backend_tag }}" \
             -var="frontend_image_tag=${{ steps.tags.outputs.frontend_tag }}" \
             -var="secrets_manager_arn=${{ secrets.SECRETS_MANAGER_ARN }}" \
@@ -175,6 +216,8 @@ jobs:
         if: needs.build-backend.result == 'success'
         run: |
           aws ecs update-service --cluster $PROJECT_NAME-cluster --service $PROJECT_NAME-backend --force-new-deployment
+          aws ecs update-service --cluster $PROJECT_NAME-cluster --service $PROJECT_NAME-worker --force-new-deployment
+          aws ecs update-service --cluster $PROJECT_NAME-cluster --service $PROJECT_NAME-beat --force-new-deployment
 
       - name: Deploy updated frontend
         if: needs.build-frontend.result == 'success'
@@ -183,4 +226,4 @@ jobs:
 
       - name: Wait for services to stabilize
         run: |
-          aws ecs wait services-stable --cluster $PROJECT_NAME-cluster --services $PROJECT_NAME-backend $PROJECT_NAME-frontend
+          aws ecs wait services-stable --cluster $PROJECT_NAME-cluster --services $PROJECT_NAME-backend $PROJECT_NAME-frontend $PROJECT_NAME-worker $PROJECT_NAME-beat

@@ -23,6 +23,8 @@
         { "name": "AUTH_TRUST_HOST", "value": "true" },
         { "name": "NEXTAUTH_URL", "value": "https://arbiter-ai.com" },
         { "name": "NEXT_PUBLIC_API_URL", "value": "/api/v1" },
+        { "name": "SANDBOX_EMAIL_BYPASS_ENABLED", "value": "false" },
+        { "name": "EMAIL_PROVIDER", "value": "ses" },
         { "name": "EMAIL_FROM", "value": "noreply@arbiter-ai.com" },
         { "name": "EMAIL_FROM_NAME", "value": "Arbiter AI" },
         { "name": "NODE_ENV", "value": "production" },
@@ -36,6 +38,10 @@
         {
           "name": "DATABASE_URL",
           "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:FRONTEND_DATABASE_URL::"
+        },
+        {
+          "name": "EMAIL_SERVER",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<ACCOUNT_ID>:secret:arbiter-ai/production:EMAIL_SERVER::"
         }
       ],
       "healthCheck": {

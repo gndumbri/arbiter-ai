@@ -10,6 +10,8 @@ resource "aws_lb" "main" {
 }
 
 locals {
+  # HTTPS listener is optional so early sandbox deploys can run with HTTP only.
+  # When a cert ARN is provided, all path rules are bound to the HTTPS listener.
   use_https_listener = var.alb_certificate_arn != ""
   rules_listener_arn = local.use_https_listener ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
 }
@@ -62,6 +64,7 @@ resource "aws_lb_listener" "http" {
   dynamic "default_action" {
     for_each = local.use_https_listener ? [1] : []
     content {
+      # Force canonical HTTPS in environments with ACM configured.
       type = "redirect"
       redirect {
         port        = "443"
@@ -74,6 +77,7 @@ resource "aws_lb_listener" "http" {
   dynamic "default_action" {
     for_each = local.use_https_listener ? [] : [1]
     content {
+      # HTTP-only fallback (no certificate yet): serve frontend directly.
       type             = "forward"
       target_group_arn = aws_lb_target_group.frontend.arn
     }

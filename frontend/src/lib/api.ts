@@ -2,8 +2,7 @@
  * api.ts — Typed API client for Arbiter AI backend.
  *
  * All methods auto-attach the NextAuth JWT as a Bearer token.
- * Uses NEXT_PUBLIC_API_URL when set. In production, defaults to same-origin /api/v1.
- * In development, defaults to localhost:8000.
+ * Uses NEXT_PUBLIC_API_URL when set. Otherwise defaults to same-origin /api/v1.
  *
  * Called by: All frontend pages and components that fetch data.
  * Depends on: next-auth (getSession), backend /api/v1/* endpoints.
@@ -11,15 +10,30 @@
 
 import { getSession } from "next-auth/react";
 
+// NEXT_PUBLIC_* values are compiled into the client bundle at build time.
+// Keep a safe fallback so missing build-time vars do not point to localhost.
 const ENV_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim();
-const RAW_API_BASE_URL =
-  ENV_API_BASE_URL ||
-  (process.env.NODE_ENV === "production" ? "/api/v1" : "http://localhost:8000/api/v1");
+const IS_LOCALHOST_API_URL = ENV_API_BASE_URL
+  ? /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(ENV_API_BASE_URL)
+  : false;
+const RAW_API_BASE_URL = process.env.NODE_ENV === "production" && IS_LOCALHOST_API_URL
+  ? "/api/v1"
+  : (ENV_API_BASE_URL || "/api/v1");
 
-if (!ENV_API_BASE_URL && process.env.NODE_ENV === "production") {
-  // WHY: Prevent silent localhost fallbacks in production bundles.
-  // Same-origin /api/v1 works with ALB path routing (/api/* -> backend).
-  console.warn("NEXT_PUBLIC_API_URL is not set; defaulting frontend API calls to same-origin /api/v1.");
+if (!ENV_API_BASE_URL) {
+  // WHY: Prevent silent localhost fallbacks in all environments.
+  // Same-origin /api/v1 works in AWS with ALB path routing and in local dev
+  // when Next.js rewrites /api/v1 -> http://localhost:8000/api/v1.
+  const message = "NEXT_PUBLIC_API_URL is not set; defaulting frontend API calls to same-origin /api/v1.";
+  if (process.env.NODE_ENV === "production") {
+    console.warn(message);
+  } else {
+    console.info(message);
+  }
+} else if (process.env.NODE_ENV === "production" && IS_LOCALHOST_API_URL) {
+  console.warn(
+    "NEXT_PUBLIC_API_URL points to localhost in production; overriding to same-origin /api/v1."
+  );
 }
 
 export const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, "").endsWith("/api/v1")
@@ -205,16 +219,39 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 
 export async function fetcher<T>(url: string, options?: RequestInit): Promise<T> {
   const authHeaders = await getAuthHeaders();
+  const timeoutMs = 15_000;
+  const timeoutController = options?.signal ? null : new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  if (timeoutController) {
+    timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+  }
 
-  const res = await fetch(`${API_BASE_URL}${url}`, {
-    ...options,
-    credentials: "include", // Include cookies for NextAuth session
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders,
-      ...options?.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      credentials: "include", // Include cookies for NextAuth session
+      signal: options?.signal ?? timeoutController?.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+        ...options?.headers,
+      },
+    });
+  } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
+    const devHint = process.env.NODE_ENV === "development"
+      ? " Ensure backend is running and NEXT dev proxy target is correct."
+      : "";
+    if (isTimeout) {
+      throw new Error(`Arbiter API request timed out after ${timeoutMs / 1000}s.${devHint}`);
+    }
+    throw new Error(`Could not reach Arbiter API (${API_BASE_URL}).${devHint}`);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => null);
@@ -260,15 +297,33 @@ export async function fetcher<T>(url: string, options?: RequestInit): Promise<T>
  */
 async function fetchMultipart<T>(url: string, formData: FormData): Promise<T> {
   const authHeaders = await getAuthHeaders();
+  const timeoutMs = 30_000;
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
-  const res = await fetch(`${API_BASE_URL}${url}`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      ...authHeaders,
-    },
-    body: formData,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${url}`, {
+      method: "POST",
+      credentials: "include",
+      signal: timeoutController.signal,
+      headers: {
+        ...authHeaders,
+      },
+      body: formData,
+    });
+  } catch (error) {
+    const isTimeout = error instanceof DOMException && error.name === "AbortError";
+    const devHint = process.env.NODE_ENV === "development"
+      ? " Ensure backend is running and Next.js dev proxy target is correct."
+      : "";
+    if (isTimeout) {
+      throw new Error(`Upload request timed out after ${timeoutMs / 1000}s.${devHint}`);
+    }
+    throw new Error(`Could not reach Arbiter API (${API_BASE_URL}).${devHint}`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: "Upload failed" }));

@@ -191,7 +191,8 @@ aws secretsmanager create-secret \
     "OPEN_RULES_SYNC_CRON": "45 4 * * *",
     "OPEN_RULES_MAX_DOCUMENTS": "20",
     "OPEN_RULES_ALLOWED_LICENSES": "creative commons,open gaming license,orc",
-    "OPEN_RULES_FORCE_REINDEX": "false"
+    "OPEN_RULES_FORCE_REINDEX": "false",
+    "EMAIL_SERVER": "smtp://SMTP_USERNAME:SMTP_PASSWORD@email-smtp.us-east-1.amazonaws.com:587"
   }'
 ```
 

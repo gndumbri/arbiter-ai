@@ -7,6 +7,10 @@ const withPWA = withPWAInit({
   register: true,
 });
 
+// Local backend target for Next.js development proxy rewrites.
+// Override in frontend/.env if needed (example: BACKEND_ORIGIN=http://127.0.0.1:8000).
+const BACKEND_ORIGIN = (process.env.BACKEND_ORIGIN || "http://localhost:8000").replace(/\/+$/, "");
+
 const nextConfig: NextConfig = {
   // WHY: 'standalone' creates a self-contained build (copies only needed
   // node_modules files into .next/standalone). Required for Docker/ECS
@@ -25,6 +29,23 @@ const nextConfig: NextConfig = {
         hostname: "lh3.googleusercontent.com",
       },
     ],
+  },
+  async rewrites() {
+    // WHY: Keep browser API calls same-origin (/api/v1) in local dev, then proxy
+    // to FastAPI. This mirrors AWS ALB path routing and avoids CORS/localhost leaks.
+    if (process.env.NODE_ENV !== "development") {
+      return [];
+    }
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${BACKEND_ORIGIN}/api/v1/:path*`,
+      },
+      {
+        source: "/health",
+        destination: `${BACKEND_ORIGIN}/health`,
+      },
+    ];
   },
 };
 

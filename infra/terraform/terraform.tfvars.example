@@ -9,9 +9,11 @@ alb_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0
 trusted_proxy_hops = 1
 frontend_nextauth_url = "https://arbiter-ai.com"
 next_public_api_url   = "/api/v1"
-email_from            = "noreply@arbiter-ai.com"
+email_from            = "noreply@getquuie.com"
 email_from_name       = "Arbiter AI"
+email_provider        = "ses"
 inject_optional_sandbox_secrets = false
+sandbox_email_bypass_enabled = true
 
 backend_image_tag  = "latest"
 frontend_image_tag = "latest"
@@ -20,9 +22,16 @@ backend_cpu    = 512
 backend_memory = 1024
 frontend_cpu   = 256
 frontend_memory = 512
+worker_cpu     = 512
+worker_memory  = 1024
+beat_cpu       = 256
+beat_memory    = 512
 
 backend_desired_count  = 2
 frontend_desired_count = 2
+worker_desired_count   = 1
+beat_desired_count     = 1
+uploads_dir            = "/tmp/arbiter_uploads"
 
 # Required: ARN of the Secrets Manager secret containing all app env vars
 secrets_manager_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:arbiter-ai-prod-AbCdEf"
@@ -32,6 +41,7 @@ ses_domain = "arbiter-ai.com"
 # Secret contract reminder (JSON keys):
 # - Backend: DATABASE_URL (asyncpg), REDIS_URL, NEXTAUTH_SECRET, STRIPE_*
 # - Frontend: FRONTEND_DATABASE_URL (postgresql://)
+# - Frontend email (provider-specific, optional in sandbox): EMAIL_SERVER for SES or BREVO_API_KEY for Brevo
 
 # RDS PostgreSQL (db.t4g.micro + 20 GB = free-tier eligible)
 db_instance_class    = "db.t4g.micro"

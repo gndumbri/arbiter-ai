@@ -53,9 +53,9 @@ describe("API base URL resolution", () => {
     expect(base).toBe("/api/v1");
   });
 
-  it("uses localhost fallback in development when NEXT_PUBLIC_API_URL is missing", async () => {
+  it("uses same-origin /api/v1 fallback in development when NEXT_PUBLIC_API_URL is missing", async () => {
     const base = await loadApiBaseUrl({ nodeEnv: "development" });
-    expect(base).toBe("http://localhost:8000/api/v1");
+    expect(base).toBe("/api/v1");
   });
 
   it("normalizes explicit NEXT_PUBLIC_API_URL without /api/v1 suffix", async () => {
@@ -72,5 +72,13 @@ describe("API base URL resolution", () => {
       publicApiUrl: "https://sandbox.arbiter-ai.com/api/v1/",
     });
     expect(base).toBe("https://sandbox.arbiter-ai.com/api/v1");
+  });
+
+  it("overrides localhost NEXT_PUBLIC_API_URL in production for safety", async () => {
+    const base = await loadApiBaseUrl({
+      nodeEnv: "production",
+      publicApiUrl: "http://localhost:8000/api/v1",
+    });
+    expect(base).toBe("/api/v1");
   });
 });
