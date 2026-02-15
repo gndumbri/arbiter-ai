@@ -18,7 +18,7 @@ export default function DashboardLayout({
     { href: "/dashboard/catalog", label: "Armory" },
     { href: "/dashboard/rulings", label: "Scrolls" },
     { href: "/dashboard/parties", label: "Guild" },
-    { href: "/dashboard/agents", label: "NPCs" },
+    { href: "/dashboard/agents", label: "Ask" },
     { href: "/dashboard/settings", label: "Settings" },
   ];
 
