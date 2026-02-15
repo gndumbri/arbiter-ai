@@ -1,8 +1,8 @@
-"""rulings.py — Saved Rulings CRUD with privacy controls.
+"""rulings.py — Saved Rulings CRUD with privacy controls and game-based grouping.
 
 Allows users to save verdicts from adjudication sessions, tag them for
 later retrieval, and control visibility (PRIVATE, PARTY, PUBLIC).
-Public rulings feed into the community discovery page.
+Rulings are linked to a game_name for easy lookup ("show me all Catan rulings").
 
 Called by: Frontend rulings page (/dashboard/rulings), chat save button
 Depends on: deps.py (CurrentUser, DbSession), tables.py (SavedRuling)
@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.tables import SavedRuling
@@ -30,6 +30,8 @@ class SaveRulingRequest(BaseModel):
 
     query: str
     verdict_json: dict
+    game_name: str | None = None
+    session_id: str | None = None
     privacy_level: str = "PRIVATE"  # "PRIVATE" | "PARTY" | "PUBLIC"
     tags: list[str] | None = None
 
@@ -40,9 +42,40 @@ class SavedRulingResponse(BaseModel):
     id: str
     query: str
     verdict_json: dict
+    game_name: str | None
+    session_id: str | None
     privacy_level: str
     tags: list[str] | None
     created_at: str | None
+
+
+class GameRulingCount(BaseModel):
+    """Game name with number of saved rulings."""
+
+    game_name: str
+    count: int
+
+
+class UpdateRulingRequest(BaseModel):
+    """Request body for updating a ruling's metadata."""
+
+    tags: list[str] | None = None
+    game_name: str | None = None
+    privacy_level: str | None = None
+
+
+def _ruling_to_response(r: SavedRuling) -> SavedRulingResponse:
+    """Convert a SavedRuling ORM object to a response."""
+    return SavedRulingResponse(
+        id=str(r.id),
+        query=r.query,
+        verdict_json=r.verdict_json,
+        game_name=r.game_name,
+        session_id=str(r.session_id) if r.session_id else None,
+        privacy_level=r.privacy_level,
+        tags=r.tags,
+        created_at=r.created_at.isoformat() if r.created_at else None,
+    )
 
 
 # ─── Save a Ruling ─────────────────────────────────────────────────────────────
@@ -57,13 +90,11 @@ async def save_ruling(body: SaveRulingRequest, user: CurrentUser, db: DbSession)
     Tier: All tiers (FREE, PRO, ADMIN).
 
     Args:
-        body: Ruling data including query text, verdict JSON, privacy level, and tags.
+        body: Ruling data including query text, verdict JSON, game_name,
+              session_id, privacy level, and tags.
 
     Returns:
         The saved ruling with generated ID and timestamp.
-
-    Raises:
-        HTTPException: 400 if privacy_level is not one of PRIVATE/PARTY/PUBLIC.
     """
     if body.privacy_level not in ("PRIVATE", "PARTY", "PUBLIC"):
         raise HTTPException(status_code=400, detail="Invalid privacy_level")
@@ -72,6 +103,8 @@ async def save_ruling(body: SaveRulingRequest, user: CurrentUser, db: DbSession)
         user_id=user["id"],
         query=body.query,
         verdict_json=body.verdict_json,
+        game_name=body.game_name,
+        session_id=uuid.UUID(body.session_id) if body.session_id else None,
         privacy_level=body.privacy_level,
         tags=body.tags,
     )
@@ -79,50 +112,69 @@ async def save_ruling(body: SaveRulingRequest, user: CurrentUser, db: DbSession)
     await db.commit()
     await db.refresh(ruling)
 
-    return SavedRulingResponse(
-        id=str(ruling.id),
-        query=ruling.query,
-        verdict_json=ruling.verdict_json,
-        privacy_level=ruling.privacy_level,
-        tags=ruling.tags,
-        created_at=ruling.created_at.isoformat() if ruling.created_at else None,
-    )
+    return _ruling_to_response(ruling)
 
 
 # ─── List My Rulings ──────────────────────────────────────────────────────────
 
 
 @router.get("", response_model=list[SavedRulingResponse])
-async def list_my_rulings(user: CurrentUser, db: DbSession) -> list[SavedRulingResponse]:
-    """List the current user's saved rulings.
+async def list_my_rulings(
+    user: CurrentUser,
+    db: DbSession,
+    game_name: str | None = Query(None, description="Filter by game name"),
+) -> list[SavedRulingResponse]:
+    """List the current user's saved rulings, optionally filtered by game.
 
     Auth: JWT required.
     Rate limit: None.
     Tier: All tiers.
 
+    Args:
+        game_name: Optional filter — only return rulings for this game.
+
     Returns:
         Up to 100 most recent rulings for the authenticated user.
     """
-    # Cap at 100 to avoid unbounded queries in paginated UI
-    result = await db.execute(
+    stmt = (
         select(SavedRuling)
         .where(SavedRuling.user_id == user["id"])
         .order_by(SavedRuling.created_at.desc())
         .limit(100)
     )
-    rulings = result.scalars().all()
 
-    return [
-        SavedRulingResponse(
-            id=str(r.id),
-            query=r.query,
-            verdict_json=r.verdict_json,
-            privacy_level=r.privacy_level,
-            tags=r.tags,
-            created_at=r.created_at.isoformat() if r.created_at else None,
+    if game_name:
+        stmt = stmt.where(SavedRuling.game_name == game_name)
+
+    result = await db.execute(stmt)
+    return [_ruling_to_response(r) for r in result.scalars().all()]
+
+
+# ─── List Ruling Games ────────────────────────────────────────────────────────
+
+
+@router.get("/games", response_model=list[GameRulingCount])
+async def list_ruling_games(user: CurrentUser, db: DbSession) -> list[GameRulingCount]:
+    """List distinct game names with ruling counts for the current user.
+
+    WHY: Powers the game filter sidebar on the rulings page.
+    Shows "Catan (12)" / "Wingspan (3)" so users can click to filter.
+
+    Auth: JWT required.
+    Returns: List of game names + counts, ordered by most rulings first.
+    """
+    result = await db.execute(
+        select(
+            SavedRuling.game_name,
+            func.count(SavedRuling.id).label("count"),
         )
-        for r in rulings
-    ]
+        .where(SavedRuling.user_id == user["id"])
+        .where(SavedRuling.game_name.is_not(None))
+        .group_by(SavedRuling.game_name)
+        .order_by(func.count(SavedRuling.id).desc())
+    )
+    rows = result.all()
+    return [GameRulingCount(game_name=row.game_name, count=row.count) for row in rows]
 
 
 # ─── Public Community Feed ────────────────────────────────────────────────────
@@ -139,55 +191,31 @@ async def list_public_rulings(db: DbSession) -> list[SavedRulingResponse]:
     Returns:
         Up to 50 most recent PUBLIC rulings across all users.
     """
-    # Limit to 50 for the community feed — pagination can be added later
     result = await db.execute(
         select(SavedRuling)
         .where(SavedRuling.privacy_level == "PUBLIC")
         .order_by(SavedRuling.created_at.desc())
         .limit(50)
     )
-    rulings = result.scalars().all()
-
-    return [
-        SavedRulingResponse(
-            id=str(r.id),
-            query=r.query,
-            verdict_json=r.verdict_json,
-            privacy_level=r.privacy_level,
-            tags=r.tags,
-            created_at=r.created_at.isoformat() if r.created_at else None,
-        )
-        for r in rulings
-    ]
+    return [_ruling_to_response(r) for r in result.scalars().all()]
 
 
-# ─── Update Privacy Level ─────────────────────────────────────────────────────
+# ─── Update Ruling ────────────────────────────────────────────────────────────
 
 
-@router.patch("/{ruling_id}/privacy")
-async def update_ruling_privacy(
+@router.patch("/{ruling_id}", response_model=SavedRulingResponse)
+async def update_ruling(
     ruling_id: uuid.UUID,
-    body: dict,
+    body: UpdateRulingRequest,
     user: CurrentUser,
     db: DbSession,
-) -> dict:
-    """Update the privacy level of a saved ruling.
+) -> SavedRulingResponse:
+    """Update a ruling's metadata (tags, game_name, privacy level).
 
     Auth: JWT required (owner only — user_id must match).
     Rate limit: None.
     Tier: All tiers.
-
-    Args:
-        ruling_id: UUID of the ruling to update.
-        body: Dict with 'privacy_level' set to PRIVATE, PARTY, or PUBLIC.
-
-    Returns:
-        Confirmation dict with ruling ID and new privacy level.
-
-    Raises:
-        HTTPException: 404 if ruling not found or not owned by user.
     """
-    # Ownership check: only the creator can change privacy
     result = await db.execute(
         select(SavedRuling).where(
             SavedRuling.id == ruling_id,
@@ -198,14 +226,18 @@ async def update_ruling_privacy(
     if not ruling:
         raise HTTPException(status_code=404, detail="Ruling not found")
 
-    new_privacy = body.get("privacy_level", ruling.privacy_level)
-    if new_privacy not in ("PRIVATE", "PARTY", "PUBLIC"):
-        raise HTTPException(status_code=400, detail="Invalid privacy_level")
+    if body.tags is not None:
+        ruling.tags = body.tags
+    if body.game_name is not None:
+        ruling.game_name = body.game_name
+    if body.privacy_level is not None:
+        if body.privacy_level not in ("PRIVATE", "PARTY", "PUBLIC"):
+            raise HTTPException(status_code=400, detail="Invalid privacy_level")
+        ruling.privacy_level = body.privacy_level
 
-    ruling.privacy_level = new_privacy
     await db.commit()
-
-    return {"id": str(ruling.id), "privacy_level": ruling.privacy_level}
+    await db.refresh(ruling)
+    return _ruling_to_response(ruling)
 
 
 # ─── Delete Ruling ─────────────────────────────────────────────────────────────
@@ -222,14 +254,7 @@ async def delete_ruling(
     Auth: JWT required (owner only).
     Rate limit: None.
     Tier: All tiers.
-
-    Args:
-        ruling_id: UUID of the ruling to delete.
-
-    Raises:
-        HTTPException: 404 if ruling not found or not owned by user.
     """
-    # Ownership check: only the creator can delete
     result = await db.execute(
         select(SavedRuling).where(
             SavedRuling.id == ruling_id,

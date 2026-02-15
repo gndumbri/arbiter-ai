@@ -973,8 +973,10 @@ arbiter-ai/
 │   │   │   │   ├── admin.py        # Admin portal (RBAC)
 │   │   │   │   ├── rulings.py      # Saved rulings CRUD
 │   │   │   │   ├── parties.py      # Party management
-│   │   │   │   └── billing.py      # Stripe checkout + tiers
-│   │   │   ├── deps.py         # Dependency injection (DB, Pinecone, Redis)
+│   │   │   │   ├── billing.py      # Stripe checkout + tiers
+│   │   │   │   ├── library.py      # User game library CRUD
+│   │   │   │   └── users.py        # User profile management
+│   │   │   ├── deps.py         # Dependency injection (DB, Auth, Redis)
 │   │   │   ├── rate_limit.py   # Redis-backed rate limiter
 │   │   │   └── middleware.py   # RequestID, Logging, Error handling
 │   │   ├── core/
@@ -1149,6 +1151,21 @@ arbiter-ai/
 - [x] Provider: Bedrock Embeddings (Titan v2 via `bedrock_embedding.py`)
 - [x] Provider: FlashRank Reranker (local Python via `flashrank_reranker.py`)
 - [x] Registry: all new providers registered and wirable via env var
+
+### Phase 9: Production Hardening & Missing APIs
+
+- [x] JWT Auth: Production NextAuth JWT validation in `deps.py` (was stub)
+- [x] Exception chaining: `from exc` / `from None` in deps, billing, webhook handlers
+- [x] Stripe checkout: Full Checkout Session creation + 3 webhook lifecycle handlers
+- [x] Library API: 5 CRUD endpoints (`library.py`) — list, add, update, favorite, delete
+- [x] User profile API: GET/PATCH/DELETE `/users/me` (`users.py`)
+- [x] Publisher key rotation: `POST /publishers/{id}/rotate-key`
+- [x] Judge namespace resolution: Dynamic namespace from session rulesets
+- [x] `JudgeQuery.ruleset_ids`: Optional filter for specific rulesets
+- [x] Session expiry enforcement: 410 Gone for expired sessions
+- [x] Frontend: Suspense boundary on settings page for SSG compat
+- [x] Frontend: `output: standalone` in next.config.ts for Docker deployment
+- [x] Frontend: `plan_tier` field alignment across api.ts and settings page
 
 ---
 

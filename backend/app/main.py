@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.middleware import register_middleware
 from app.api.routes import (
     admin,
+    agents,
     billing,
     catalog,
     health,
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
 
     # Routes
     app.include_router(health.router)
+    app.include_router(agents.router)
     app.include_router(sessions.router)
     app.include_router(rules.router)
     app.include_router(judge.router)

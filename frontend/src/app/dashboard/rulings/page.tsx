@@ -1,9 +1,9 @@
 /**
- * RulingsPage.tsx — Saved Rulings with My Rulings and Community tabs.
+ * RulingsPage.tsx — Saved Rulings with game-based grouping and filtering.
  *
- * Fetches from GET /api/v1/rulings and /api/v1/rulings/public.
- * Supports search/filter, privacy badges, confidence indicators,
- * expandable verdict details with citations, and delete.
+ * Fetches from GET /api/v1/rulings, /api/v1/rulings/games, and /api/v1/rulings/public.
+ * Supports game filter tabs, search, privacy badges, confidence indicators,
+ * and deletion via SWR.
  *
  * Used by: /dashboard/rulings route
  */
@@ -12,45 +12,73 @@
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bookmark, Trash2, Globe, Lock, Users, Loader2, Search, ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  BookOpen,
+  Globe,
+  Lock,
+  Users,
+  Trash2,
+  Search,
+  Gamepad2,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { api, SavedRulingResponse } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { api, SavedRulingResponse, GameRulingCount } from "@/lib/api";
+
+// ─── Privacy Icon ──────────────────────────────────────────────────────────
 
 function PrivacyIcon({ level }: { level: string }) {
   switch (level) {
     case "PUBLIC":
-      return <Globe className="h-3.5 w-3.5" />;
+      return <Globe className="h-3.5 w-3.5 text-green-400" />;
     case "PARTY":
-      return <Users className="h-3.5 w-3.5" />;
+      return <Users className="h-3.5 w-3.5 text-blue-400" />;
     default:
-      return <Lock className="h-3.5 w-3.5" />;
+      return <Lock className="h-3.5 w-3.5 text-muted-foreground" />;
   }
 }
 
+// ─── Confidence Badge ──────────────────────────────────────────────────────
+
 function ConfidenceBadge({ confidence }: { confidence: number }) {
-  const color =
-    confidence >= 0.8
-      ? "bg-green-500/15 text-green-400 border-green-500/30"
-      : confidence >= 0.5
-      ? "bg-yellow-500/15 text-yellow-400 border-yellow-500/30"
-      : "bg-red-500/15 text-red-400 border-red-500/30";
+  if (confidence >= 0.8)
+    return (
+      <Badge variant="default" className="bg-green-600/20 text-green-400 border-green-600/30 text-xs">
+        High Confidence
+      </Badge>
+    );
+  if (confidence >= 0.5)
+    return (
+      <Badge variant="default" className="bg-yellow-600/20 text-yellow-400 border-yellow-600/30 text-xs">
+        Moderate
+      </Badge>
+    );
   return (
-    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${color}`}>
-      {Math.round(confidence * 100)}%
-    </span>
+    <Badge variant="default" className="bg-red-600/20 text-red-400 border-red-600/30 text-xs">
+      Low Confidence
+    </Badge>
   );
 }
 
-function RulingCard({ ruling, onDelete }: { ruling: SavedRulingResponse; onDelete: (id: string) => void }) {
+// ─── Ruling Card ────────────────────────────────────────────────────────────
+
+function RulingCard({
+  ruling,
+  onDelete,
+}: {
+  ruling: SavedRulingResponse;
+  onDelete: (id: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const verdict = ruling.verdict_json;
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
@@ -58,193 +86,277 @@ function RulingCard({ ruling, onDelete }: { ruling: SavedRulingResponse; onDelet
       <Card className="border-border/50 bg-card hover:border-primary/30 transition-colors">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between gap-3">
-            <CardTitle className="text-sm font-medium leading-snug flex-1">
-              &ldquo;{ruling.query}&rdquo;
-            </CardTitle>
-            <div className="flex items-center gap-2 shrink-0">
-              {verdict && typeof verdict === "object" && "confidence" in verdict && (
-                <ConfidenceBadge confidence={(verdict as { confidence: number }).confidence} />
-              )}
-              <Badge variant="outline" className="text-xs gap-1">
+            <div className="flex-1 min-w-0">
+              <CardTitle className="text-base font-medium leading-snug">
+                {ruling.query}
+              </CardTitle>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
                 <PrivacyIcon level={ruling.privacy_level} />
-                {ruling.privacy_level}
-              </Badge>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {verdict && typeof verdict === "object" && "verdict" in verdict && (
-              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                {(verdict as { verdict: string }).verdict}
-              </p>
-            )}
-
-            {ruling.tags && ruling.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {ruling.tags.map((tag) => (
+                {ruling.game_name && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    <Gamepad2 className="h-3 w-3" />
+                    {ruling.game_name}
+                  </Badge>
+                )}
+                {verdict?.confidence != null && (
+                  <ConfidenceBadge confidence={verdict.confidence} />
+                )}
+                {ruling.tags?.map((tag) => (
                   <Badge key={tag} variant="secondary" className="text-xs">
                     {tag}
                   </Badge>
                 ))}
               </div>
-            )}
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-muted-foreground">
-                {ruling.created_at
-                  ? new Date(ruling.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
-                  : "Unknown date"}
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                  onClick={() => setExpanded(!expanded)}
-                >
-                  <ChevronDown className={`h-3.5 w-3.5 mr-1 transition-transform ${expanded ? "rotate-180" : ""}`} />
-                  {expanded ? "Less" : "More"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                  onClick={() => onDelete(ruling.id)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
             </div>
-
-            <AnimatePresence>
-              {expanded && verdict && typeof verdict === "object" && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-sm space-y-2">
-                    {"reasoning_chain" in verdict && (verdict as { reasoning_chain: string | null }).reasoning_chain && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Reasoning</p>
-                        <p className="text-sm">{(verdict as { reasoning_chain: string }).reasoning_chain}</p>
-                      </div>
-                    )}
-                    {"citations" in verdict && Array.isArray((verdict as { citations: unknown[] }).citations) && (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-1">Citations</p>
-                        {((verdict as { citations: Array<{ source: string; page?: number; snippet?: string }> }).citations).map((c, i) => (
-                          <p key={i} className="text-xs text-muted-foreground">
-                            {c.source} {c.page ? `(p. ${c.page})` : ""} — {c.snippet?.slice(0, 100)}...
-                          </p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(ruling.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-        </CardContent>
+        </CardHeader>
+
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <CardContent className="pt-0 pb-4">
+                {verdict?.verdict && (
+                  <div className="mt-2 rounded-md bg-muted/30 p-3 text-sm leading-relaxed">
+                    {verdict.verdict}
+                  </div>
+                )}
+
+                {verdict?.citations && verdict.citations.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                      Citations
+                    </p>
+                    <div className="space-y-1.5">
+                      {verdict.citations.map((c, i) => (
+                        <div
+                          key={i}
+                          className="text-xs text-muted-foreground bg-muted/20 rounded px-2 py-1.5"
+                        >
+                          <span className="font-medium text-foreground">
+                            {c.source}
+                            {c.page ? `, p.${c.page}` : ""}
+                            {c.section ? ` §${c.section}` : ""}
+                          </span>
+                          {c.snippet && (
+                            <span className="ml-1 italic">— "{c.snippet}"</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {verdict?.reasoning_chain && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                      Reasoning
+                    </p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {verdict.reasoning_chain}
+                    </p>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-3">
+                  Saved{" "}
+                  {ruling.created_at
+                    ? new Date(ruling.created_at).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "recently"}
+                </p>
+              </CardContent>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </Card>
     </motion.div>
   );
 }
 
+// ─── Main Page ──────────────────────────────────────────────────────────────
+
 export default function RulingsPage() {
+  const [activeTab, setActiveTab] = useState<"mine" | "community">("mine");
+  const [selectedGame, setSelectedGame] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"mine" | "public">("mine");
-  const { data: myRulings, isLoading: loadingMine } = useSWR("rulings-mine", api.listRulings, {
-    onError: () => {},
-  });
-  const { data: publicRulings, isLoading: loadingPublic } = useSWR("rulings-public", api.listPublicRulings, {
-    onError: () => {},
-  });
 
-  const isLoading = tab === "mine" ? loadingMine : loadingPublic;
-  const rulings = tab === "mine" ? myRulings : publicRulings;
-
-  const filtered = (rulings || []).filter(
-    (r) =>
-      r.query.toLowerCase().includes(search.toLowerCase()) ||
-      (r.tags && r.tags.some((t) => t.toLowerCase().includes(search.toLowerCase())))
+  const { data: myRulings, isLoading: loadingMine } = useSWR(
+    activeTab === "mine" ? ["rulings", selectedGame] : null,
+    () => api.listRulings(selectedGame ?? undefined),
+    { onError: () => {} }
   );
+
+  const { data: publicRulings, isLoading: loadingPublic } = useSWR(
+    activeTab === "community" ? "rulings-public" : null,
+    api.listPublicRulings,
+    { onError: () => {} }
+  );
+
+  const { data: gameList } = useSWR("ruling-games", api.listRulingGames, {
+    onError: () => {},
+  });
 
   const handleDelete = async (id: string) => {
     try {
       await api.deleteRuling(id);
-      mutate("rulings-mine");
+      mutate(["rulings", selectedGame]);
     } catch {
-      // silent fail
+      // silent
     }
   };
 
+  const rulings = activeTab === "mine" ? myRulings : publicRulings;
+  const isLoading = activeTab === "mine" ? loadingMine : loadingPublic;
+
+  const filtered = rulings?.filter(
+    (r) =>
+      !search ||
+      r.query.toLowerCase().includes(search.toLowerCase()) ||
+      r.game_name?.toLowerCase().includes(search.toLowerCase()) ||
+      r.tags?.some((t) => t.toLowerCase().includes(search.toLowerCase()))
+  );
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Saved Rulings</h1>
-        <p className="text-muted-foreground mt-1">
-          Your pinned verdicts and community rulings.
-        </p>
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Saved Rulings</h1>
+          <p className="text-muted-foreground mt-1">
+            Your saved questions and answers, organized by game.
+          </p>
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="flex rounded-lg border border-border/50 p-0.5 bg-muted/30">
-          <button
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              tab === "mine" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setTab("mine")}
-          >
-            My Rulings
-          </button>
-          <button
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              tab === "public" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-            }`}
-            onClick={() => setTab("public")}
-          >
-            Community
-          </button>
-        </div>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-border/50 pb-2">
+        <Button
+          variant={activeTab === "mine" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("mine")}
+          className="gap-1.5"
+        >
+          <BookOpen className="h-4 w-4" />
+          My Rulings
+        </Button>
+        <Button
+          variant={activeTab === "community" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("community")}
+          className="gap-1.5"
+        >
+          <Globe className="h-4 w-4" />
+          Community
+        </Button>
+      </div>
+
+      {/* Game Filter + Search */}
+      <div className="flex flex-col gap-3 sm:flex-row">
+        {/* Game filter pills — only show for "mine" tab when there are games */}
+        {activeTab === "mine" && gameList && gameList.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            <Button
+              variant={selectedGame === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setSelectedGame(null);
+                mutate(["rulings", null]);
+              }}
+              className="text-xs h-7"
+            >
+              All ({gameList.reduce((a, g) => a + g.count, 0)})
+            </Button>
+            {gameList.map((game) => (
+              <Button
+                key={game.game_name}
+                variant={selectedGame === game.game_name ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectedGame(game.game_name);
+                  mutate(["rulings", game.game_name]);
+                }}
+                className="text-xs h-7 gap-1"
+              >
+                <Gamepad2 className="h-3 w-3" />
+                {game.game_name} ({game.count})
+              </Button>
+            ))}
+          </div>
+        )}
+
+        <div className="relative sm:ml-auto sm:w-64">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search rulings by question or tag..."
-            className="pl-10"
+            placeholder="Search rulings..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            className="pl-8"
           />
         </div>
       </div>
 
+      {/* Content */}
       {isLoading ? (
         <div className="flex h-48 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      ) : filtered.length === 0 ? (
+      ) : !filtered || filtered.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border/50 text-center">
-          <Bookmark className="mb-4 h-12 w-12 text-muted-foreground" />
+          <BookOpen className="mb-4 h-12 w-12 text-muted-foreground" />
           <h3 className="text-lg font-semibold">
-            {tab === "mine" ? "No saved rulings yet" : "No community rulings yet"}
+            {search
+              ? "No results"
+              : selectedGame
+                ? `No rulings for ${selectedGame}`
+                : "No saved rulings yet"}
           </h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            {tab === "mine"
-              ? "Save verdicts from the chat to build your collection."
-              : "Public rulings from the community will appear here."}
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+            {search
+              ? "Try a different search term."
+              : "Ask a rules question in a game session and save the answer for later."}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           <AnimatePresence>
             {filtered.map((ruling) => (
-              <RulingCard key={ruling.id} ruling={ruling} onDelete={handleDelete} />
+              <RulingCard
+                key={ruling.id}
+                ruling={ruling}
+                onDelete={handleDelete}
+              />
             ))}
           </AnimatePresence>
         </div>

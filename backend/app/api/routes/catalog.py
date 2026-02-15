@@ -4,22 +4,22 @@ Lists official game rulesets from verified publishers. This is a
 read-only public API — no auth required.
 
 Endpoints:
-    GET /api/v1/catalog/           → List all published rulesets
+    GET /api/v1/catalog/           → List all published rulesets (with optional search)
     GET /api/v1/catalog/{slug}     → Get a single ruleset by game slug
 
-Called by: Frontend catalog page (CatalogPage component).
+Called by: Frontend catalog page (CatalogPage component), RulesetUploadDialog wizard.
 Depends on: deps.py (get_db), tables.py (OfficialRuleset, Publisher)
 
 Architecture note for AI agents:
     The catalog lists OfficialRuleset entries that have been pushed by
-    publishers via POST /publishers/{id}/games. The frontend catalog
-    page merges these with COMMON_GAMES fallbacks. The slug-based detail
-    endpoint is used when a user clicks on a game card.
+    publishers via POST /publishers/{id}/games, seeded by seed_catalog.py,
+    or ingested from external sources (BGG, Open5e).
+    The frontend RulesetUploadDialog uses the ?search= param to find games.
 """
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +46,8 @@ class CatalogEntry(BaseModel):
     publisher_name: str
     version: str
     status: str
+    license_type: str | None = None
+    attribution_text: str | None = None
 
 
 class CatalogDetailEntry(BaseModel):
@@ -62,6 +64,8 @@ class CatalogDetailEntry(BaseModel):
     status: str
     chunk_count: int
     pinecone_namespace: str | None = None
+    license_type: str | None = None
+    attribution_text: str | None = None
 
 
 # ─── List Catalog ─────────────────────────────────────────────────────────────
@@ -69,25 +73,39 @@ class CatalogDetailEntry(BaseModel):
 
 @router.get("/", response_model=list[CatalogEntry])
 async def list_verified_games(
+    search: str | None = Query(
+        None,
+        description="Search games by name or publisher (case-insensitive ILIKE).",
+    ),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all official rulesets in the catalog.
+    """List all official rulesets in the catalog (with optional search).
 
     Auth: None (public endpoint).
     Rate limit: None.
     Tier: Open to all.
 
-    Returns:
-        List of catalog entries with game name, slug, publisher, version.
+    Args:
+        search: Optional text filter. Matches game_name or publisher_display_name
+                using case-insensitive ILIKE.
 
-    Note: Currently lists ALL rulesets regardless of status. In production,
-    uncomment the status filter to show only READY rulesets from verified
-    publishers.
+    Returns:
+        List of catalog entries with game name, slug, publisher, version, license.
     """
     stmt = (
         select(OfficialRuleset)
         .options(selectinload(OfficialRuleset.publisher))
     )
+
+    # WHY: The search param powers the RulesetUploadDialog wizard (Step 1).
+    # Users type a game name and see matching results in real-time.
+    if search:
+        like_term = f"%{search}%"
+        stmt = stmt.where(
+            OfficialRuleset.game_name.ilike(like_term)
+            | OfficialRuleset.publisher_display_name.ilike(like_term)
+        )
+
     result = await db.execute(stmt)
     rulesets = result.scalars().all()
 
@@ -96,9 +114,11 @@ async def list_verified_games(
             id=r.id,
             game_name=r.game_name,
             game_slug=r.game_slug,
-            publisher_name=r.publisher.name if r.publisher else "Unknown",
+            publisher_name=r.publisher_display_name or (r.publisher.name if r.publisher else "Unknown"),
             version=r.version,
             status=r.status,
+            license_type=r.license_type,
+            attribution_text=r.attribution_text,
         )
         for r in rulesets
     ]
@@ -142,9 +162,11 @@ async def get_catalog_detail(
         id=ruleset.id,
         game_name=ruleset.game_name,
         game_slug=ruleset.game_slug,
-        publisher_name=ruleset.publisher.name if ruleset.publisher else "Unknown",
+        publisher_name=ruleset.publisher_display_name or (ruleset.publisher.name if ruleset.publisher else "Unknown"),
         version=ruleset.version,
         status=ruleset.status,
         chunk_count=ruleset.chunk_count or 0,
         pinecone_namespace=ruleset.pinecone_namespace,
+        license_type=ruleset.license_type,
+        attribution_text=ruleset.attribution_text,
     )
