@@ -20,7 +20,7 @@
 | **LLM**         | Bedrock Claude 3.5 (default)   | —         | Query expansion, verdict generation, classification |
 | **Reranker**    | FlashRank (default, local)     | —         | Cross-encoder scoring, no API key needed            |
 | **PDF Parsing** | Docling / Unstructured         | —         | Layout-aware PDF extraction                         |
-| **Frontend**    | Next.js 14+ (App Router)       | 14+       | PWA, React Server Components                        |
+| **Frontend**    | Next.js 16+ (App Router)       | 16+       | PWA, React Server Components                        |
 | **Auth**        | NextAuth.js v5 + Brevo         | —         | Passwordless magic links, JWT sessions              |
 | **Billing**     | Stripe                         | —         | Subscriptions, webhooks                             |
 | **Config**      | pydantic-settings              | 2.0+      | Typed configuration from env vars                   |
@@ -30,25 +30,27 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Frontend (Next.js on Vercel)                       │
-│  - SSR pages, PWA shell, NextAuth client            │
+│ Frontend (Next.js)                                  │
+│ - SSR pages, PWA shell, NextAuth client             │
 └──────────────────────┬──────────────────────────────┘
                        │ HTTPS
 ┌──────────────────────▼──────────────────────────────┐
-│  API Server (FastAPI on Fargate)                    │
-│  - REST endpoints, JWT validation, rate limiting    │
-│  - Writes to Postgres (+ pgvector for embeddings)   │
-│  - Enqueues jobs to Redis                           │
-└──────┬──────────┬───────────────────────────────────┘
-       │          │
-   Postgres    Redis
-   (+ pgvector)   │
-       │    ┌─────▼─────────────────────────────┐
-       │    │  Celery Worker (isolated container) │
-       │    │  - PDF ingestion pipeline           │
-       │    │  - NO direct DB access (via API)    │
-       │    │  - Ephemeral, destroyed after job   │
-       │    └───────────────────────────────────┘
+│ API Server (FastAPI on Fargate)                     │
+│ - REST endpoints, JWT validation, rate limiting     │
+│ - Writes to Postgres (+ pgvector)                   │
+│ - Enqueues ingestion jobs to Redis                  │
+└───────────────┬───────────────────────┬─────────────┘
+                │                       │
+        ┌───────▼────────┐     ┌───────▼──────────────┐
+        │ Postgres 16     │     │ Redis 7              │
+        │ + pgvector      │     │ queue + abuse limits │
+        └─────────────────┘     └──────────┬───────────┘
+                                           │
+                                ┌──────────▼───────────┐
+                                │ Celery Worker Service │
+                                │ - PDF ingestion       │
+                                │ - Direct DB access    │
+                                └───────────────────────┘
 ```
 
 ---
@@ -303,11 +305,12 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 
 ### 2.3 Redis Keys
 
-| Pattern                | Purpose                     | TTL                    |
-| ---------------------- | --------------------------- | ---------------------- |
-| `rate:{user_id}`       | Sliding-window rate limiter | 60s                    |
-| `session:{session_id}` | Session cache               | Matches session expiry |
-| `job:{job_id}`         | Ingestion job status        | 24h                    |
+| Pattern                                 | Purpose                               | TTL                               |
+| --------------------------------------- | ------------------------------------- | --------------------------------- |
+| `rate:{category}:{user_id}:{window_key}` | Per-user category limits              | Window TTL (`minute`/`hour`/`day`) |
+| `ip_rate:{ip}:{window_key}`             | Middleware IP throttling              | 60s                               |
+| `abuse:events:{identifier}:{category}`  | Sliding abuse detector event history  | `window_seconds * 2`              |
+| `abuse:block:{identifier}:{category}`   | Temporary abuse blocks                | Category-specific block TTL       |
 
 ---
 
@@ -416,7 +419,7 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 2. Validate magic bytes (`%PDF-`), size ≤ 20MB, pages ≤ 500
 3. SHA-256 hash → check `file_blocklist`
 4. ClamAV scan in Docker container (planned, not yet enabled in code)
-5. Pass to sandboxed worker (ephemeral container, no DB access)
+5. Pass to ingestion worker queue (dedicated worker with controlled service access)
 
 ### 4.2 Layer 2: Relevance Filter
 
@@ -477,7 +480,7 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 | --------------------- | --------------------------------------------------------------------------------------------------------------- |
 | File quarantine       | Uploaded files isolated until virus scan clears                                                                 |
 | File upload hardening | Filename sanitization (path traversal prevention), 20MB cap, `source_type` validation                           |
-| Sandbox execution     | PDF processing in ephemeral containers with no DB/network access                                                |
+| Worker isolation      | Ingestion runs in dedicated Celery worker; DB access is required for metadata updates and vector persistence     |
 | Tenant isolation      | Per-ruleset vector isolation via `ruleset_id` FK, `user_id` FK on all rows                                      |
 | Rate limiting         | Redis per-user category limits + IP middleware (`100/min` default) with trusted proxy-depth parsing             |
 | Input sanitization    | Query length ≤ 500 chars, Pydantic validation on all request bodies, ILIKE wildcard escaping, parameterized SQL |
@@ -519,7 +522,7 @@ CREATE INDEX ix_rule_chunks_ruleset_id ON rule_chunks(ruleset_id);
 1. Multi-column PDF parses correctly (columns not merged)
 2. Table-heavy PDF: tables chunked as atomic units
 3. Non-rulebook PDF: rejected by Layer 2 within 10 seconds
-4. Known-malware PDF: rejected by ClamAV
+4. Known-malware PDF: rejected by ClamAV (planned, not yet enabled in code)
 5. Blocked-hash PDF: rejected instantly
 6. Cross-namespace query: official + user results merged correctly
 7. Low-confidence query: uncertainty disclaimer returned

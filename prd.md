@@ -29,6 +29,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Ruleset upload/list/status endpoints are user-scoped and session-scoped, with mock-mode endpoint parity restored.
 - Vector retrieval now requires indexed rulesets for a session (no anonymous/session fallback namespace).
 - Current upload cap is 20 MB as a cost-control guardrail; tiered size limits remain a roadmap item.
+- Active personal ruleset caps are currently enforced at FREE=10 and PRO/ADMIN=50.
 - Canonical `APP_BASE_URL` is now separate from CORS `ALLOWED_ORIGINS` for Stripe/invite link correctness.
 - IP abuse controls now use trusted proxy-depth parsing (`TRUSTED_PROXY_HOPS`) to prevent spoofed `X-Forwarded-For`.
 - Party invite join flow now validates token payload shape and reuses standard party rate limits without runtime errors.
@@ -42,7 +43,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 | ----------------------------- | -------- | --------- |
 | Browse official catalog       | ✅       | ✅        |
 | Add official games to library | Up to 5  | Unlimited |
-| Upload personal PDFs          | 1 active | 10 active |
+| Upload personal PDFs          | 10 active | 50 active |
 | Personal PDF retention        | 24 hours | 30 days   |
 | Favorites & history           | ✅       | ✅        |
 
@@ -115,7 +116,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 | Feature            | FREE             | PRO ($9.99/mo) | Enforced?       |
 | ------------------ | ---------------- | -------------- | --------------- |
 | Sessions           | 24-hour expiry   | 30-day expiry  | ✅ Backend      |
-| Active rulesets    | 2                | 10             | ⚠️ Aspirational |
+| Active rulesets    | 10               | 50             | ✅ Backend      |
 | Max file size      | 20 MB            | 20 MB          | ✅ Backend      |
 | Queries/day        | 5 (configurable) | Unlimited      | ✅ Backend      |
 | Game library slots | 5                | Unlimited      | ⚠️ Aspirational |
