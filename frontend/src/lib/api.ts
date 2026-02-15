@@ -55,6 +55,8 @@ export interface CatalogEntry {
   publisher_name: string;
   version: string;
   status: string;
+  license_type?: string;
+  attribution_text?: string;
 }
 
 export interface PartyResponse {
@@ -232,6 +234,14 @@ export const api = {
   // ─── Game Catalog ───────────────────────────────────────────────────────────
   listCatalog: async () => {
     return fetcher<CatalogEntry[]>("/catalog/");
+  },
+
+  /**
+   * Search the catalog by game name or publisher (powers the wizard Step 1).
+   * Uses the ?search= ILIKE param on the backend.
+   */
+  searchCatalog: async (query: string) => {
+    return fetcher<CatalogEntry[]>(`/catalog/?search=${encodeURIComponent(query)}`);
   },
 
   // ─── User Game Library ──────────────────────────────────────────────────────
