@@ -15,3 +15,10 @@ frontend_desired_count = 2
 
 # Required: ARN of the Secrets Manager secret containing all app env vars
 secrets_manager_arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:arbiter-ai-prod-AbCdEf"
+
+# RDS PostgreSQL (db.t4g.micro + 20 GB = free-tier eligible)
+db_instance_class    = "db.t4g.micro"
+db_allocated_storage = 20
+db_name              = "arbiter"
+db_username          = "arbiter"
+db_password          = "CHANGE_ME_TO_A_STRONG_PASSWORD"
