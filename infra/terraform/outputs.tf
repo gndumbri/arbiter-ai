@@ -48,3 +48,13 @@ output "rds_database_url" {
   value       = "postgresql+asyncpg://${var.db_username}:${var.db_password}@${aws_db_instance.main.endpoint}/${var.db_name}"
   sensitive   = true
 }
+
+output "redis_endpoint" {
+  description = "ElastiCache Redis endpoint (host:port)"
+  value       = "${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}"
+}
+
+output "redis_url" {
+  description = "Constructed REDIS_URL — update this value in Secrets Manager"
+  value       = "redis://${aws_elasticache_cluster.main.cache_nodes[0].address}:${aws_elasticache_cluster.main.cache_nodes[0].port}/0"
+}
