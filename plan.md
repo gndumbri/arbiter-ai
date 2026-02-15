@@ -79,7 +79,7 @@ graph TD
 | Cache            | Redis                                      | Session cache, rate-limit counters, query result cache               |
 | Frontend         | Next.js 14 (App Router)                    | PWA shell, chat UI, citation viewer, file upload, session management |
 | Billing          | Stripe Checkout + Customer Portal          | Subscription management, FREE→PRO upgrades, invoicing                |
-| Auth             | NextAuth.js v5 + Brevo                     | Passwordless magic links, JWT sessions                               |
+| Auth             | NextAuth.js v5 + AWS SES                   | Passwordless magic links, JWT sessions                               |
 
 ### 2.3 Data Schema
 
@@ -464,7 +464,7 @@ flowchart TD
 
 #### Account Lifecycle
 
-1. **Sign Up:** User registers via NextAuth v5 (magic link email via Brevo)
+1. **Sign Up:** User registers via NextAuth v5 (magic link email via AWS SES)
 2. **Free Tier:** Default. No payment required. Limited sessions and query rates.
 3. **Upgrade to PRO:** User clicks "Upgrade" → Stripe Checkout session created → redirected to Stripe-hosted payment page → webhook confirms subscription → `users.tier` updated to `PRO`
 4. **Manage Subscription:** PRO users access Stripe Customer Portal to update payment method, cancel, or view invoices
@@ -1137,8 +1137,8 @@ arbiter-ai/
 
 ### Phase 6: User Accounts, Billing & Social
 
-- [x] Authentication: Passwordless email login (NextAuth + Brevo magic links)
-- [x] Communication layer: Modular email/SMS service (Brevo provider)
+- [x] Authentication: Passwordless email login (NextAuth + AWS SES magic links)
+- [x] Communication layer: Modular email/SMS service (AWS SES provider)
 - [x] Dev auto-login for local development
 - [x] Rate limiting: Redis-backed, per-user daily limits (`rate_limit.py`)
 - [x] Admin portal: stats, user/publisher/tier management with RBAC (`admin.py`)

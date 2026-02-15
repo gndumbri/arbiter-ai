@@ -71,9 +71,15 @@ variable "email_from_name" {
 }
 
 variable "inject_optional_sandbox_secrets" {
-  description = "When true, include optional sandbox secret mappings (Stripe/Brevo). Production always includes them."
+  description = "When true, include optional sandbox secret mappings (Stripe). Production always includes them."
   type        = bool
   default     = false
+}
+
+variable "ses_domain" {
+  description = "Domain to verify with SES for sending email (e.g. arbiter-ai.com)"
+  type        = string
+  default     = "arbiter-ai.com"
 }
 
 variable "vpc_cidr" {

@@ -27,7 +27,6 @@ describe("CommunicationService", () => {
 
     const service = new CommunicationService({
       appMode: "sandbox",
-      brevoApiKey: "key-present",
       transactionalProvider: primary,
       fallbackProvider: fallback,
     });
@@ -47,7 +46,6 @@ describe("CommunicationService", () => {
 
     const service = new CommunicationService({
       appMode: "production",
-      brevoApiKey: "key-present",
       transactionalProvider: primary,
       fallbackProvider: fallback,
     });
@@ -58,24 +56,12 @@ describe("CommunicationService", () => {
     expect(fallbackSend).not.toHaveBeenCalled();
   });
 
-  it("throws in production when Brevo key is missing", async () => {
-    const service = new CommunicationService({
-      appMode: "production",
-      brevoApiKey: "",
-    });
-
-    await expect(service.sendTransactionalEmail(sampleEmail)).rejects.toThrow(
-      "BREVO_API_KEY is required in production email flows."
-    );
-  });
-
   it("uses primary provider when send succeeds", async () => {
     const primarySend = vi.fn().mockResolvedValue("primary-id");
     const primary = new StubProvider(primarySend);
 
     const service = new CommunicationService({
       appMode: "sandbox",
-      brevoApiKey: "key-present",
       transactionalProvider: primary,
     });
 

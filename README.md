@@ -195,7 +195,7 @@ For split backend/frontend DB drivers in AWS, keep both keys in the secret paylo
 | `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
 | `NEXT_PUBLIC_API_URL` | Recommended | Backend API base (`/api/v1` recommended in prod) |
 | `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
-| `BREVO_API_KEY`   | Optional in sandbox, required in production | Magic-link provider key |
+| `AWS_REGION`      | Optional | AWS region for SES (default `us-east-1`) |
 | `EMAIL_FROM`      | Optional | Sender address (default `noreply@arbiter-ai.com`) |
 | `EMAIL_FROM_NAME` | Optional | Sender display name (default `Arbiter AI`) |
 

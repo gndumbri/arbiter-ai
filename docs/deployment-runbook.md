@@ -45,13 +45,12 @@ Each backend secret should be a **JSON object** with these required keys:
 Optional (provider-dependent) keys:
 
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_ID` (required in production; optional in sandbox unless `inject_optional_sandbox_secrets=true`)
-- `BREVO_API_KEY` (required in production frontend email flows; optional in sandbox)
 - `OPENAI_API_KEY` when `LLM_PROVIDER=openai` and/or `EMBEDDING_PROVIDER=openai`
 - `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`
 
 > [!IMPORTANT]
 > ECS/Fargate does not read your local `.env` files after commit. Runtime config comes only from task-definition `environment` + `secrets` injection.
-> If a key is referenced in `containerDefinitions[].secrets`, that JSON key must exist in Secrets Manager (empty string is allowed for sandbox optional keys like `BREVO_API_KEY`).
+> If a key is referenced in `containerDefinitions[].secrets`, that JSON key must exist in Secrets Manager.
 
 ### How to generate them
 
@@ -244,8 +243,8 @@ The frontend needs these env vars set in the hosting platform dashboard:
 | `NEXTAUTH_URL`    | `https://sandbox.arbiter-ai.com`  | `https://arbiter-ai.com`          |
 | `NEXT_PUBLIC_API_URL` | `/api/v1` (recommended with ALB path routing) | `/api/v1` (or full backend URL) |
 | `DATABASE_URL`    | RDS connection string (non-async) | RDS connection string (non-async) |
-| `BREVO_API_KEY`   | Optional (console fallback)       | Required                          |
 | `EMAIL_FROM`      | `noreply@arbiter-ai.com`          | `noreply@arbiter-ai.com`          |
+| `AWS_REGION`      | `us-east-1`                       | `us-east-1`                       |
 
 > [!WARNING]
 > The frontend `DATABASE_URL` uses the **synchronous** driver (`postgresql://`), NOT the async one (`postgresql+asyncpg://`) that the backend uses. Same RDS instance, different connection string format.
@@ -313,7 +312,7 @@ Before you go live, verify:
 - [ ] **`NEXTAUTH_SECRET`** matches between backend secret and frontend env
 - [ ] **`NEXT_PUBLIC_API_URL`** is set for frontend build (or intentionally defaults to `/api/v1`)
 - [ ] **Stripe webhook** is pointed at `https://<domain>/api/v1/billing/webhooks/stripe`
-- [ ] **Brevo sender domain** is verified (or using a verified sender email)
+- [ ] **SES domain** is verified (DKIM CNAME records added to DNS) and out of sandbox mode
 - [ ] **Preflight gate passes** (`make preflight-sandbox` / `make preflight-production`)
 - [ ] **GitHub deploy workflow** succeeds (image build + Terraform apply + ECS service stabilization)
 - [ ] **Health check** passes: `curl https://<domain>/health`

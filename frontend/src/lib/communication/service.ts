@@ -1,5 +1,5 @@
 import { ConsoleEmailProvider } from "./providers/console";
-import { BrevoProvider } from "./providers/brevo";
+import { SESProvider } from "./providers/ses";
 import { CommunicationProvider, EmailMessage } from "./types";
 
 type AppMode = "mock" | "sandbox" | "production";
@@ -13,7 +13,7 @@ function resolveAppMode(value: string | undefined): AppMode {
 
 type CommunicationServiceOptions = {
   appMode?: string;
-  brevoApiKey?: string;
+  awsRegion?: string;
   sender?: { email: string; name: string };
   transactionalProvider?: CommunicationProvider;
   marketingProvider?: CommunicationProvider;
@@ -25,35 +25,36 @@ export class CommunicationService {
   private transactionalProvider: CommunicationProvider;
   private marketingProvider: CommunicationProvider;
   private fallbackProvider: CommunicationProvider;
-  private hasBrevoKey: boolean;
 
   constructor(options: CommunicationServiceOptions = {}) {
     this.appMode = resolveAppMode(options.appMode ?? process.env.APP_MODE);
-    const brevoApiKey = options.brevoApiKey ?? (process.env.BREVO_API_KEY || "");
+    const awsRegion = options.awsRegion ?? process.env.AWS_REGION ?? "us-east-1";
     const sender = options.sender || {
       email: process.env.EMAIL_FROM || "noreply@arbiter-ai.com",
       name: process.env.EMAIL_FROM_NAME || "Arbiter AI",
     };
 
-    const brevo = new BrevoProvider(brevoApiKey, sender);
+    const ses = new SESProvider(awsRegion, sender);
     const fallback = options.fallbackProvider || new ConsoleEmailProvider();
-    this.hasBrevoKey = Boolean(brevoApiKey.trim());
     this.fallbackProvider = fallback;
 
-    // Override hooks used by tests.
+    // In production and sandbox, use SES (IAM credentials are provided by the
+    // ECS task role). In mock mode, always use the console fallback.
+    const useSES = this.appMode !== "mock";
+
     if (options.transactionalProvider) {
       this.transactionalProvider = options.transactionalProvider;
     } else {
-      this.transactionalProvider = this.hasBrevoKey ? brevo : fallback;
+      this.transactionalProvider = useSES ? ses : fallback;
     }
     if (options.marketingProvider) {
       this.marketingProvider = options.marketingProvider;
     } else {
-      this.marketingProvider = this.hasBrevoKey ? brevo : fallback;
+      this.marketingProvider = useSES ? ses : fallback;
     }
 
-    if (!this.hasBrevoKey && this.appMode !== "production") {
-      console.warn("BREVO_API_KEY not set. Using console email fallback in non-production mode.");
+    if (!useSES) {
+      console.warn("APP_MODE=mock. Using console email fallback.");
     }
   }
 
@@ -62,10 +63,6 @@ export class CommunicationService {
     message: EmailMessage,
     channel: "transactional" | "marketing"
   ): Promise<string> {
-    if (this.appMode === "production" && !this.hasBrevoKey) {
-      throw new Error("BREVO_API_KEY is required in production email flows.");
-    }
-
     try {
       return await provider.sendEmail(message);
     } catch (error) {
