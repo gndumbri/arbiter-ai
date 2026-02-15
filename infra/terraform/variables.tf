@@ -141,6 +141,12 @@ variable "frontend_memory" {
   default     = 512
 }
 
+variable "frontend_node_options" {
+  description = "NODE_OPTIONS for frontend runtime (heap cap to reduce OOM risk on small tasks)"
+  type        = string
+  default     = "--max-old-space-size=384"
+}
+
 variable "worker_cpu" {
   description = "CPU units for worker task"
   type        = number

@@ -53,6 +53,7 @@ def test_frontend_taskdef_includes_api_base_and_nextauth_url() -> None:
 
     assert env_map.get("NEXT_PUBLIC_API_URL")
     assert env_map.get("NEXTAUTH_URL")
+    assert env_map.get("NODE_OPTIONS", "").startswith("--max-old-space-size=")
     assert "AUTH_URL" not in env_map
 
 

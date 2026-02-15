@@ -266,6 +266,7 @@ The frontend needs these env vars set in the hosting platform dashboard:
 | `AUTH_TRUST_HOST` | `true`                            | `true`                            |
 | `NEXTAUTH_URL`    | `https://sandbox.arbiter-ai.com`  | `https://arbiter-ai.com`          |
 | `NEXT_PUBLIC_API_URL` | `/api/v1` (recommended with ALB path routing) | `/api/v1` (or full backend URL) |
+| `NODE_OPTIONS`    | `--max-old-space-size=384`         | `--max-old-space-size=384`        |
 | `DATABASE_URL`    | RDS connection string (non-async) | RDS connection string (non-async) |
 | `EMAIL_PROVIDER`  | `ses` (recommended)               | `ses` (recommended)               |
 | `EMAIL_SERVER`    | Optional (console fallback if omitted) | Required for SES delivery     |

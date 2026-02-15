@@ -70,6 +70,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Frontend auth/email flow now defaults to SES and degrades gracefully in sandbox (console fallback when provider credentials are missing or transiently failing) while keeping production strict for delivery quality.
 - Terraform frontend secret mapping is now email-provider aware (`EMAIL_SERVER` for SES, `BREVO_API_KEY` for Brevo) to prevent ECS startup failures from unused secret keys.
 - Sandbox auth now includes a temporary allowlisted credentials bypass for `kasey.kaplan@gmail.com` and `gndumbri@gmail.com` (no magic-link required), controlled by `SANDBOX_EMAIL_BYPASS_ENABLED` and disabled outside sandbox.
+- Frontend container build is now hardened with a dedicated `.dockerignore` and explicit Node heap caps (`NODE_OPTIONS`) to improve CI/ECS stability under constrained memory.
 - Ask flow now auto-links exact-name READY official rulesets when sessions were created without explicit linkage, and surfaces actionable indexing guidance instead of opaque judge failures.
 - Shelf-to-Ask flow now starts from library entries directly, reusing indexed game sessions or creating official rules-linked sessions so game selection and adjudication context stay aligned.
 - Session chat header now shows game/NPC context instead of raw session-id labels, improving in-conversation orientation.

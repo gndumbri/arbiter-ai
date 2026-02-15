@@ -22,6 +22,7 @@ backend_cpu    = 512
 backend_memory = 1024
 frontend_cpu   = 256
 frontend_memory = 512
+frontend_node_options = "--max-old-space-size=384"
 worker_cpu     = 512
 worker_memory  = 1024
 beat_cpu       = 256

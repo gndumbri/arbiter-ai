@@ -39,6 +39,7 @@ def test_terraform_frontend_uses_frontend_database_secret_and_api_base() -> None
     assert '{ name = "APP_MODE", value = var.app_mode }' in text
     assert '{ name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url }' in text
     assert '{ name = "NEXT_PUBLIC_API_URL", value = var.next_public_api_url }' in text
+    assert '{ name = "NODE_OPTIONS", value = var.frontend_node_options }' in text
     assert (
         '{ name = "SANDBOX_EMAIL_BYPASS_ENABLED", value = var.app_mode == "sandbox" '
         '? tostring(var.sandbox_email_bypass_enabled) : "false" }'
@@ -48,6 +49,7 @@ def test_terraform_frontend_uses_frontend_database_secret_and_api_base() -> None
     assert ':EMAIL_SERVER::' in text
     assert ':BREVO_API_KEY::' in text
     assert 'variable "email_provider"' in vars_text
+    assert 'variable "frontend_node_options"' in vars_text
     assert 'variable "sandbox_email_bypass_enabled"' in vars_text
 
 

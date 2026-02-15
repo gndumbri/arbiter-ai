@@ -201,6 +201,7 @@ For split backend/frontend DB drivers in AWS, keep both keys in the secret paylo
 | `NEXTAUTH_URL`    | Dev only | `http://localhost:3000`              |
 | `NEXT_PUBLIC_API_URL` | Optional | Backend API base (defaults to same-origin `/api/v1`) |
 | `BACKEND_ORIGIN` | Dev optional | Next.js local proxy target (default `http://localhost:8000`) |
+| `NODE_OPTIONS`    | Optional | Node runtime heap cap (example: `--max-old-space-size=384`) |
 | `DATABASE_URL`    | ✅       | PostgreSQL for NextAuth adapter      |
 | `EMAIL_PROVIDER`  | Recommended | `ses` (default), `brevo`, or `console` |
 | `EMAIL_SERVER`    | Required for SES in production | SMTP URI (recommended for SES via Secrets Manager) |

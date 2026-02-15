@@ -264,6 +264,7 @@ resource "aws_ecs_task_definition" "frontend" {
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "3000" },
       { name = "HOSTNAME", value = "0.0.0.0" },
+      { name = "NODE_OPTIONS", value = var.frontend_node_options },
       { name = "AUTH_TRUST_HOST", value = "true" },
       { name = "AUTH_URL", value = "http://${aws_lb.main.dns_name}" },
       { name = "NEXTAUTH_URL", value = local.resolved_frontend_nextauth_url },

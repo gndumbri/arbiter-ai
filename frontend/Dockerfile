@@ -1,5 +1,5 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-FROM node:25-alpine AS deps
+FROM node:20-alpine AS deps
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY package.json package-lock.json* .npmrc ./
 RUN npm ci
 
 # ── Stage 2: Build ───────────────────────────────────────────────────────────
-FROM node:25-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -19,18 +19,21 @@ COPY . .
 # WHY: Next.js needs these at BUILD time for static optimization.
 # Runtime secrets are injected via environment variables at container start.
 ARG NEXT_PUBLIC_API_URL=/api/v1
+ARG NODE_OPTIONS_BUILD=--max-old-space-size=2048
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NODE_OPTIONS=$NODE_OPTIONS_BUILD
 
 RUN npm run build
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:25-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=384
 
 # WHY: Run as non-root for security (principle of least privilege)
 RUN addgroup --system --gid 1001 nodejs && \

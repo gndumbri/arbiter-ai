@@ -100,6 +100,8 @@
 - Frontend communication service now defaults to `EMAIL_PROVIDER=ses` with non-production console fallback and production-strict provider validation; Brevo remains an optional provider.
 - Terraform frontend task wiring now maps provider-specific email secrets (`EMAIL_SERVER` for SES, `BREVO_API_KEY` for Brevo) so unused keys do not break ECS startup.
 - Sandbox auth now supports an allowlisted credentials bypass (`kasey.kaplan@gmail.com`, `gndumbri@gmail.com`) to skip magic-link email during AWS sandbox testing; behavior is gated by `SANDBOX_EMAIL_BYPASS_ENABLED` and forced off outside sandbox.
+- Frontend Docker build now includes a repo `frontend/.dockerignore` to avoid shipping local artifacts (especially `node_modules`) into CI build context, reducing memory/IO pressure.
+- Frontend runtime now sets `NODE_OPTIONS` via Terraform (`frontend_node_options`, default `--max-old-space-size=384`) to reduce OOM crash risk on small ECS tasks.
 - Judge now attempts exact-name auto-binding to READY official BASE rulesets when a session lacks explicit ruleset linkage, and returns actionable 409 messaging when rules are still indexing.
 - Library shelf now has an explicit Ask bridge (`POST /api/v1/library/{id}/sessions`) that reuses indexed sessions when available or creates rules-linked sessions from official READY rulesets, keeping Shelf→Ask context aligned.
 - Frontend API base resolution now defaults to same-origin `/api/v1` in production when `NEXT_PUBLIC_API_URL` is unset (instead of `localhost`), preventing broken AWS browser calls.
