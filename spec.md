@@ -76,6 +76,7 @@
 - Judge now accepts model-selected `citation_chunk_indexes` to align returned citations with the exact evidence used.
 - Judge requests now carry recent chat turns (`history`) so follow-up questions are interpreted with conversation continuity.
 - Session/agent creation now degrades gracefully if Redis rate-limit backend is unavailable (fail-open with warning logs) to preserve app availability.
+- Abuse-detection checks now also degrade gracefully if Redis is unavailable (fail-open with warning logs), preventing false 500s on ruleset upload in sandbox/degraded environments.
 - Frontend API errors now unwrap nested backend detail payloads so agent-creation failures show actionable messages instead of generic errors.
 - Settings account deletion now uses a multi-step branded warning dialog with escalating confirmations and a typed final confirmation (`RETIRE`).
 - CORS middleware now wraps the full backend middleware stack so `Access-Control-Allow-Origin` is still returned on auth/rate-limit/error responses (prevents false browser CORS failures during session/agent creation).

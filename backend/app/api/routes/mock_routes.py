@@ -507,7 +507,7 @@ async def mock_toggle_favorite(entry_id: str):
     raise HTTPException(status_code=404, detail="Library entry not found.")
 
 
-@api_router.post("/library/{entry_id}/sessions", status_code=201, tags=["library"])
+@api_router.post("/library/{entry_id}/sessions", status_code=200, tags=["library"])
 async def mock_start_session_from_library(entry_id: str):
     """Start a session from a shelf game entry.
 

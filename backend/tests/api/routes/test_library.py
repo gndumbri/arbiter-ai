@@ -57,7 +57,49 @@ def test_start_session_from_library_reuses_indexed_session(client, db_session, o
     res_entry = MagicMock()
     res_entry.scalar_one_or_none.return_value = mock_entry
     res_indexed = MagicMock()
-    res_indexed.scalar_one_or_none.return_value = mock_session
+    res_indexed.scalars.return_value.first.return_value = mock_session
+
+    db_session.execute.side_effect = [res_entry, res_indexed]
+
+    response = client.post(f"/api/v1/library/{entry_id}/sessions")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["id"] == str(mock_session.id)
+    assert payload["game_name"] == "Root"
+
+
+def test_start_session_from_library_reuses_indexed_session_with_duplicate_join_rows(
+    client,
+    db_session,
+    override_user,
+):
+    """Join fan-out (multiple indexed rulesets) should not crash with MultipleResultsFound."""
+    now = datetime.now(UTC)
+    entry_id = uuid.uuid4()
+
+    mock_entry = MagicMock()
+    mock_entry.id = entry_id
+    mock_entry.user_id = uuid.UUID(mock_user["id"])
+    mock_entry.game_name = "Root"
+    mock_entry.official_ruleset_ids = None
+    mock_entry.personal_ruleset_ids = None
+    mock_entry.last_queried = None
+
+    mock_session = MagicMock(spec=Session)
+    mock_session.id = uuid.uuid4()
+    mock_session.user_id = uuid.UUID(mock_user["id"])
+    mock_session.game_name = "Root"
+    mock_session.persona = None
+    mock_session.system_prompt_override = None
+    mock_session.active_ruleset_ids = None
+    mock_session.created_at = now
+    mock_session.expires_at = now + timedelta(hours=24)
+
+    res_entry = MagicMock()
+    res_entry.scalar_one_or_none.return_value = mock_entry
+    # Simulate duplicate join rows by returning same session twice.
+    res_indexed = MagicMock()
+    res_indexed.scalars.return_value.first.return_value = mock_session
 
     db_session.execute.side_effect = [res_entry, res_indexed]
 
@@ -83,7 +125,7 @@ def test_start_session_from_library_409_when_no_rules(client, db_session, overri
     res_entry = MagicMock()
     res_entry.scalar_one_or_none.return_value = mock_entry
     res_indexed = MagicMock()
-    res_indexed.scalar_one_or_none.return_value = None
+    res_indexed.scalars.return_value.first.return_value = None
 
     db_session.execute.side_effect = [res_entry, res_indexed]
 

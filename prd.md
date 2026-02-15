@@ -50,6 +50,7 @@ Arbiter AI is the **definitive rules judge** for tabletop gaming. Players upload
 - Agent quality flow now applies persona + custom system instructions directly in adjudication while preserving non-overridable safety/grounding constraints.
 - Judge flow now includes recent-turn conversation context for higher-quality follow-up rulings (without relaxing citation grounding rules).
 - Agent/session creation now stays available during Redis rate-limiter outages (degraded fail-open behavior with warnings), reducing false-create failures.
+- Upload abuse checks now also fail open when Redis is unavailable, so ruleset uploads do not hard-fail in sandbox/degraded infrastructure.
 - Frontend now surfaces backend error messages cleanly (including structured rate-limit payloads) during agent creation.
 - Account deletion UX now includes a multi-step, on-brand danger flow with escalating warnings and typed confirmation before irreversible deletion.
 - Backend CORS ordering was corrected so browser clients receive CORS headers even on middleware short-circuit responses (rate-limit/auth/errors), fixing agent/session create calls that appeared as CORS failures.

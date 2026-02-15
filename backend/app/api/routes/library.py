@@ -327,7 +327,7 @@ async def start_session_from_library(
         .limit(1)
     )
     indexed_result = await db.execute(indexed_stmt)
-    indexed_session = indexed_result.scalar_one_or_none()
+    indexed_session = indexed_result.scalars().first()
     if indexed_session:
         entry.last_queried = now
         await db.commit()

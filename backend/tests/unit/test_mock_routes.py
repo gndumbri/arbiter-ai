@@ -256,7 +256,7 @@ async def test_mock_start_session_from_library(mock_client: AsyncClient):
 
     entry_id = library[0]["id"]
     response = await mock_client.post(f"/api/v1/library/{entry_id}/sessions")
-    assert response.status_code == 201
+    assert response.status_code == 200
 
     data = response.json()
     assert data["game_name"] == library[0]["game_name"]
