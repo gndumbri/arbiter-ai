@@ -47,7 +47,8 @@ resource "aws_iam_role_policy" "github_actions" {
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload"
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeRepositories"
         ]
         Resource = "*"
       },
@@ -60,8 +61,11 @@ resource "aws_iam_role_policy" "github_actions" {
         Resource = "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.project_name}-cluster/*"
       },
       {
-        Effect   = "Allow"
-        Action   = "ecs:DescribeServices"
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:DescribeClusters"
+        ]
         Resource = "*"
       },
       {
@@ -98,7 +102,8 @@ resource "aws_iam_role_policy" "github_actions" {
           "iam:GetPolicyVersion",
           "iam:ListAttachedRolePolicies",
           "iam:ListRolePolicies",
-          "iam:GetRolePolicy"
+          "iam:GetRolePolicy",
+          "iam:GetOpenIDConnectProvider"
         ]
         Resource = "*"
       }
