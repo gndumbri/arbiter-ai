@@ -22,6 +22,12 @@ create_github_actions_iam = false
 inject_optional_sandbox_secrets = false
 sandbox_email_bypass_enabled    = true
 
+# Keep Armory fresh in sandbox so game search isn't empty after deploy.
+catalog_sync_enabled      = true
+catalog_sync_cron         = "*/30 * * * *"
+catalog_ranked_game_limit = 300
+open_rules_sync_enabled   = false
+
 # Cost-aware baseline.
 backend_desired_count  = 1
 frontend_desired_count = 1

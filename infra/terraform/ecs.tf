@@ -51,6 +51,15 @@ locals {
     { name = "VECTOR_STORE_PROVIDER", value = "pgvector" },
     { name = "RERANKER_PROVIDER", value = "flashrank" },
     { name = "UPLOADS_DIR", value = var.uploads_dir },
+    # Catalog sync pipeline (metadata + open-license ingestion) settings.
+    { name = "CATALOG_SYNC_ENABLED", value = tostring(var.catalog_sync_enabled) },
+    { name = "CATALOG_SYNC_CRON", value = var.catalog_sync_cron },
+    { name = "CATALOG_RANKED_GAME_LIMIT", value = tostring(var.catalog_ranked_game_limit) },
+    { name = "OPEN_RULES_SYNC_ENABLED", value = tostring(var.open_rules_sync_enabled) },
+    { name = "OPEN_RULES_SYNC_CRON", value = var.open_rules_sync_cron },
+    { name = "OPEN_RULES_MAX_DOCUMENTS", value = tostring(var.open_rules_max_documents) },
+    { name = "OPEN_RULES_ALLOWED_LICENSES", value = var.open_rules_allowed_licenses },
+    { name = "OPEN_RULES_FORCE_REINDEX", value = tostring(var.open_rules_force_reindex) },
   ]
 
   # Frontend uses sync Postgres driver, so keep a separate secret key.

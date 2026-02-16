@@ -26,6 +26,16 @@ sandbox_email_bypass_enabled    = false
 email_provider                  = "ses"
 email_from                      = "noreply@arbiter-ai.com"
 
+# Keep catalog + open-license rules synchronized in production.
+catalog_sync_enabled        = true
+catalog_sync_cron           = "15 */6 * * *"
+catalog_ranked_game_limit   = 1000
+open_rules_sync_enabled     = true
+open_rules_sync_cron        = "45 4 * * *"
+open_rules_max_documents    = 20
+open_rules_allowed_licenses = "creative commons,open gaming license,orc"
+open_rules_force_reindex    = false
+
 # SES domain identity is managed externally in production.
 # Keep empty to avoid Terraform SES domain management with restricted CI roles.
 ses_domain = ""

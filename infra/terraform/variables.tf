@@ -279,6 +279,54 @@ variable "uploads_dir" {
   default     = "/tmp/arbiter_uploads"
 }
 
+variable "catalog_sync_enabled" {
+  description = "Enable periodic BGG catalog metadata sync via Celery Beat."
+  type        = bool
+  default     = false
+}
+
+variable "catalog_sync_cron" {
+  description = "Cron schedule for catalog metadata sync (minute hour day month day_of_week)."
+  type        = string
+  default     = "15 */6 * * *"
+}
+
+variable "catalog_ranked_game_limit" {
+  description = "Maximum number of ranked BGG games to ingest per catalog sync run."
+  type        = number
+  default     = 1000
+}
+
+variable "open_rules_sync_enabled" {
+  description = "Enable periodic open-license rules ingestion sync."
+  type        = bool
+  default     = false
+}
+
+variable "open_rules_sync_cron" {
+  description = "Cron schedule for open-license rules sync (minute hour day month day_of_week)."
+  type        = string
+  default     = "45 4 * * *"
+}
+
+variable "open_rules_max_documents" {
+  description = "Maximum open-license documents to ingest per run."
+  type        = number
+  default     = 20
+}
+
+variable "open_rules_allowed_licenses" {
+  description = "Comma-separated license keyword allowlist for open-license sync."
+  type        = string
+  default     = "creative commons,open gaming license,orc"
+}
+
+variable "open_rules_force_reindex" {
+  description = "Force open-license rules reindex even when source metadata is unchanged."
+  type        = bool
+  default     = false
+}
+
 variable "enable_shared_uploads" {
   description = "Enable shared uploads volume in ECS task definitions."
   type        = bool

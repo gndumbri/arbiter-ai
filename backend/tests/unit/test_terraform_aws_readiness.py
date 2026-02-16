@@ -21,6 +21,8 @@ def test_terraform_backend_uses_bedrock_pgvector_and_core_runtime_env() -> None:
     assert '{ name = "ALLOWED_ORIGINS", value = local.resolved_allowed_origins }' in text
     assert '{ name = "APP_BASE_URL", value = local.resolved_app_base_url }' in text
     assert '{ name = "TRUSTED_PROXY_HOPS", value = tostring(var.trusted_proxy_hops) }' in text
+    assert '{ name = "CATALOG_SYNC_ENABLED", value = tostring(var.catalog_sync_enabled) }' in text
+    assert '{ name = "OPEN_RULES_SYNC_ENABLED", value = tostring(var.open_rules_sync_enabled) }' in text
 
 
 def test_terraform_backend_excludes_unused_provider_secret_mappings() -> None:
@@ -153,6 +155,7 @@ def test_terraform_commits_full_sandbox_bootstrap_profile() -> None:
     assert "create_cloudwatch_log_groups   = true" in sandbox_vars
     assert "create_data_services           = true" in sandbox_vars
     assert "create_efs_resources           = true" in sandbox_vars
+    assert "catalog_sync_enabled      = true" in sandbox_vars
 
 
 def test_terraform_commits_safe_production_profile() -> None:
@@ -166,4 +169,6 @@ def test_terraform_commits_safe_production_profile() -> None:
     assert "create_cloudwatch_log_groups   = true" in production_vars
     assert "create_data_services           = true" in production_vars
     assert "create_github_actions_iam = true" in production_vars
+    assert "catalog_sync_enabled        = true" in production_vars
+    assert "open_rules_sync_enabled     = true" in production_vars
     assert 'ses_domain = ""' in production_vars
