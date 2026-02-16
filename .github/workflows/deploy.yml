@@ -293,12 +293,9 @@ jobs:
                   terraform state rm "$ADDR" || true
                 fi
               done <<< "$SES_STATE_ADDRS"
+            else
+              echo "No legacy SES state addresses found."
             fi
-            # Backward-compatible explicit removals in case state listing is unavailable.
-            terraform state rm 'aws_ses_domain_dkim.main' || true
-            terraform state rm 'aws_ses_domain_identity.main' || true
-            terraform state rm 'aws_ses_domain_dkim.main[0]' || true
-            terraform state rm 'aws_ses_domain_identity.main[0]' || true
           fi
 
       - name: Import existing ECS services
