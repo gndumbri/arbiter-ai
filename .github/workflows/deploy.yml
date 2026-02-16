@@ -285,6 +285,18 @@ jobs:
           # Remove any legacy SES domain resources from state so plan does not fail on read permissions.
           if grep -Eq '^[[:space:]]*ses_domain[[:space:]]*=[[:space:]]*""[[:space:]]*$' "${{ steps.context.outputs.tf_vars_file }}"; then
             echo "ses_domain is empty in ${{ steps.context.outputs.tf_vars_file }}; pruning legacy SES domain resources from Terraform state (best effort)."
+            SES_STATE_ADDRS="$(terraform state list 2>/dev/null | grep '^aws_ses_domain_' || true)"
+            if [ -n "$SES_STATE_ADDRS" ]; then
+              while IFS= read -r ADDR; do
+                if [ -n "$ADDR" ]; then
+                  echo "Pruning SES state address: $ADDR"
+                  terraform state rm "$ADDR" || true
+                fi
+              done <<< "$SES_STATE_ADDRS"
+            fi
+            # Backward-compatible explicit removals in case state listing is unavailable.
+            terraform state rm 'aws_ses_domain_dkim.main' || true
+            terraform state rm 'aws_ses_domain_identity.main' || true
             terraform state rm 'aws_ses_domain_dkim.main[0]' || true
             terraform state rm 'aws_ses_domain_identity.main[0]' || true
           fi

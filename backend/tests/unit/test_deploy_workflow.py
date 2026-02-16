@@ -92,6 +92,7 @@ def test_deploy_workflow_serializes_deploy_runs_and_handles_tf_locks() -> None:
     assert "Validate production state key" in text
     assert "Production deploys must use ${DEFAULT_TF_STATE_KEY}" in text
     assert "Prune unmanaged SES domain state (production)" in text
+    assert "terraform state list 2>/dev/null | grep '^aws_ses_domain_'" in text
     assert "terraform state rm 'aws_ses_domain_identity.main[0]'" in text
     assert "Validate manual force-unlock inputs" in text
     assert "force_unlock=true requires force_unlock_id to be set." in text
