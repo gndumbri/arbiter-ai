@@ -404,6 +404,14 @@ Before you go live, verify:
 - [ ] **ECS services** show healthy desired counts for `backend`, `frontend`, `worker`, and `beat`
 - [ ] **Health check** passes: `curl https://<domain>/health`
 
+## Auth 500 Troubleshooting
+
+If authenticated endpoints like `/api/v1/library`, `/api/v1/agents`, `/api/v1/rulesets`, or `/api/v1/parties` return `500` while `/health` is up, check for schema drift:
+
+1. Confirm backend task startup logs show `alembic upgrade head` completed successfully.
+2. Ensure the deployed backend image includes the latest Alembic revisions.
+3. Re-run deployment to roll backend tasks so migrations run before API startup.
+
 ---
 
 ## Quick Reference: What Goes Where
