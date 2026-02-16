@@ -102,6 +102,13 @@ def test_terraform_github_actions_role_includes_efs_permissions() -> None:
     assert "\"elasticfilesystem:CreateAccessPoint\"" in text
 
 
+def test_terraform_github_actions_role_can_run_one_off_ecs_tasks() -> None:
+    text = _read_tf("infra/terraform/iam.tf")
+
+    assert "\"ecs:RunTask\"" in text
+    assert "\"ecs:DescribeTasks\"" in text
+
+
 def test_terraform_alb_supports_optional_https_listener() -> None:
     alb_text = _read_tf("infra/terraform/alb.tf")
     vars_text = _read_tf("infra/terraform/variables.tf")

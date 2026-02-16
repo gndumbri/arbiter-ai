@@ -453,3 +453,192 @@ jobs:
               --output json
             exit "$WAIT_EXIT"
           fi
+
+      - name: Resolve ALB endpoint
+        id: alb
+        run: |
+          ALB_DNS="$(aws elbv2 describe-load-balancers --names "$PROJECT_NAME-alb" --query "LoadBalancers[0].DNSName" --output text)"
+          if [ -z "$ALB_DNS" ] || [ "$ALB_DNS" = "None" ]; then
+            echo "::error::Unable to resolve ALB DNS for $PROJECT_NAME-alb."
+            exit 1
+          fi
+          echo "dns=${ALB_DNS}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ALB DNS: ${ALB_DNS}"
+
+      - name: Bootstrap catalog if empty
+        env:
+          CATALOG_URL: http://${{ steps.alb.outputs.dns }}/api/v1/catalog/
+        run: |
+          catalog_count() {
+            python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["CATALOG_URL"]
+          try:
+              with urllib.request.urlopen(url, timeout=20) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
+          except Exception:
+              print(-1)
+          else:
+              print(len(payload) if isinstance(payload, list) else -1)
+          PY
+          }
+
+          EXISTING_COUNT="$(catalog_count)"
+          if [ "$EXISTING_COUNT" -lt 0 ]; then
+            echo "::error::Failed to read catalog endpoint at ${CATALOG_URL}."
+            exit 1
+          fi
+
+          if [ "$EXISTING_COUNT" -gt 0 ]; then
+            echo "Catalog already populated (${EXISTING_COUNT} entries); skipping bootstrap."
+            exit 0
+          fi
+
+          echo "Catalog is empty; running one-off backend bootstrap task (scripts.seed_catalog)."
+          TASK_DEFINITION="$(aws ecs describe-services \
+            --cluster "$PROJECT_NAME-cluster" \
+            --services "$PROJECT_NAME-backend" \
+            --query "services[0].taskDefinition" \
+            --output text)"
+          SUBNETS_JSON="$(aws ecs describe-services \
+            --cluster "$PROJECT_NAME-cluster" \
+            --services "$PROJECT_NAME-backend" \
+            --query "services[0].networkConfiguration.awsvpcConfiguration.subnets" \
+            --output json)"
+          SECURITY_GROUPS_JSON="$(aws ecs describe-services \
+            --cluster "$PROJECT_NAME-cluster" \
+            --services "$PROJECT_NAME-backend" \
+            --query "services[0].networkConfiguration.awsvpcConfiguration.securityGroups" \
+            --output json)"
+          ASSIGN_PUBLIC_IP="$(aws ecs describe-services \
+            --cluster "$PROJECT_NAME-cluster" \
+            --services "$PROJECT_NAME-backend" \
+            --query "services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp" \
+            --output text)"
+
+          if [ -z "$TASK_DEFINITION" ] || [ "$TASK_DEFINITION" = "None" ]; then
+            echo "::error::Unable to resolve backend task definition for bootstrap."
+            exit 1
+          fi
+
+          NETWORK_CONFIGURATION="$(
+            SUBNETS_JSON="$SUBNETS_JSON" \
+            SECURITY_GROUPS_JSON="$SECURITY_GROUPS_JSON" \
+            ASSIGN_PUBLIC_IP="$ASSIGN_PUBLIC_IP" \
+            python3 - <<'PY'
+          import json
+          import os
+
+          network = {
+              "awsvpcConfiguration": {
+                  "subnets": json.loads(os.environ["SUBNETS_JSON"]),
+                  "securityGroups": json.loads(os.environ["SECURITY_GROUPS_JSON"]),
+                  "assignPublicIp": os.environ["ASSIGN_PUBLIC_IP"],
+              }
+          }
+          print(json.dumps(network))
+          PY
+          )"
+
+          RUN_TASK_OUTPUT="$(
+            aws ecs run-task \
+              --cluster "$PROJECT_NAME-cluster" \
+              --launch-type FARGATE \
+              --task-definition "$TASK_DEFINITION" \
+              --network-configuration "$NETWORK_CONFIGURATION" \
+              --overrides '{"containerOverrides":[{"name":"backend","command":["python","-m","scripts.seed_catalog"]}]}' \
+              --count 1 \
+              --output json
+          )"
+
+          TASK_ARN="$(
+            RUN_TASK_OUTPUT="$RUN_TASK_OUTPUT" python3 - <<'PY'
+          import json
+          import os
+
+          payload = json.loads(os.environ["RUN_TASK_OUTPUT"])
+          task_arn = ""
+          tasks = payload.get("tasks") or []
+          if tasks:
+              task_arn = tasks[0].get("taskArn") or ""
+          print(task_arn)
+          PY
+          )"
+
+          if [ -z "$TASK_ARN" ]; then
+            echo "::error::Failed to launch catalog bootstrap task."
+            echo "$RUN_TASK_OUTPUT"
+            exit 1
+          fi
+
+          echo "Waiting for bootstrap task to finish: ${TASK_ARN}"
+          aws ecs wait tasks-stopped --cluster "$PROJECT_NAME-cluster" --tasks "$TASK_ARN"
+
+          EXIT_CODE="$(aws ecs describe-tasks \
+            --cluster "$PROJECT_NAME-cluster" \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].containers[?name==\`backend\`].exitCode | [0]" \
+            --output text)"
+          STOPPED_REASON="$(aws ecs describe-tasks \
+            --cluster "$PROJECT_NAME-cluster" \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].stoppedReason" \
+            --output text)"
+          CONTAINER_REASON="$(aws ecs describe-tasks \
+            --cluster "$PROJECT_NAME-cluster" \
+            --tasks "$TASK_ARN" \
+            --query "tasks[0].containers[?name==\`backend\`].reason | [0]" \
+            --output text)"
+
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "::error::Catalog bootstrap task failed (exit code: $EXIT_CODE)."
+            echo "stoppedReason=$STOPPED_REASON"
+            echo "containerReason=$CONTAINER_REASON"
+            exit 1
+          fi
+
+      - name: Smoke check catalog is populated
+        env:
+          CATALOG_URL: http://${{ steps.alb.outputs.dns }}/api/v1/catalog/
+        run: |
+          catalog_count() {
+            python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          url = os.environ["CATALOG_URL"]
+          try:
+              with urllib.request.urlopen(url, timeout=20) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
+          except Exception:
+              print(-1)
+          else:
+              print(len(payload) if isinstance(payload, list) else -1)
+          PY
+          }
+
+          ATTEMPTS=12
+          SLEEP_SECONDS=15
+
+          for ATTEMPT in $(seq 1 "$ATTEMPTS"); do
+            COUNT="$(catalog_count)"
+            if [ "$COUNT" -gt 0 ]; then
+              echo "Catalog ready with ${COUNT} entries."
+              exit 0
+            fi
+            if [ "$COUNT" -lt 0 ]; then
+              echo "Catalog check attempt ${ATTEMPT}/${ATTEMPTS} failed (endpoint unavailable)."
+            else
+              echo "Catalog still empty on attempt ${ATTEMPT}/${ATTEMPTS}."
+            fi
+            if [ "$ATTEMPT" -lt "$ATTEMPTS" ]; then
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          echo "::error::Catalog is still empty after deploy bootstrap and retries."
+          exit 1

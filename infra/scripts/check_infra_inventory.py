@@ -60,8 +60,8 @@ TF_MODULES: list[tuple[str, str, str]] = [
 PERMISSION_MATRIX: list[tuple[str, str, str]] = [
     (
         "Always (Terraform state + service deploy path)",
-        "S3 backend bucket, DynamoDB lock table, ECR image repos, ECS cluster/services/task defs, and read-only discovery APIs.",
-        "s3:GetObject/PutObject/ListBucket, dynamodb:*, ecr:*, ecs:RegisterTaskDefinition/UpdateService/Describe*, ec2:Describe*, "
+        "S3 backend bucket, DynamoDB lock table, ECR image repos, ECS cluster/services/task defs, one-off ECS bootstrap tasks, and read-only discovery APIs.",
+        "s3:GetObject/PutObject/ListBucket, dynamodb:*, ecr:*, ecs:RegisterTaskDefinition/UpdateService/RunTask/Describe*, ec2:Describe*, "
         "elasticloadbalancing:Describe*, logs:Describe*, iam:GetRole/PassRole/GetPolicy*",
     ),
     (
@@ -240,8 +240,8 @@ MODULE_PERMISSION_BREAKDOWN: list[ModulePermission] = [
         responsibility="ECS cluster, task definitions, and services for backend/frontend/worker/beat.",
         toggle="Always managed",
         create_actions="ecs:CreateCluster/UpdateCluster, ecs:RegisterTaskDefinition/DeregisterTaskDefinition, "
-        "ecs:CreateService/UpdateService/DeleteService, ecs:TagResource, iam:PassRole.",
-        reuse_actions="ecs:DescribeClusters, ecs:DescribeServices, ecs:ListServices, ecs:DescribeTaskDefinition.",
+        "ecs:CreateService/UpdateService/DeleteService, ecs:RunTask, ecs:TagResource, iam:PassRole.",
+        reuse_actions="ecs:DescribeClusters, ecs:DescribeServices, ecs:DescribeTasks, ecs:ListServices, ecs:DescribeTaskDefinition.",
         failure_signal="Creation of service was not idempotent when service exists outside Terraform state.",
     ),
     ModulePermission(

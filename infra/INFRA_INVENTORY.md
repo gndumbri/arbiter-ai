@@ -37,7 +37,7 @@ Run with `--check` in CI to fail builds when this inventory drifts.
 
 | Scope | Used for | Required action families |
 |---|---|---|
-| `Always (Terraform state + service deploy path)` | S3 backend bucket, DynamoDB lock table, ECR image repos, ECS cluster/services/task defs, and read-only discovery APIs. | `s3:GetObject/PutObject/ListBucket, dynamodb:*, ecr:*, ecs:RegisterTaskDefinition/UpdateService/Describe*, ec2:Describe*, elasticloadbalancing:Describe*, logs:Describe*, iam:GetRole/PassRole/GetPolicy*` |
+| `Always (Terraform state + service deploy path)` | S3 backend bucket, DynamoDB lock table, ECR image repos, ECS cluster/services/task defs, one-off ECS bootstrap tasks, and read-only discovery APIs. | `s3:GetObject/PutObject/ListBucket, dynamodb:*, ecr:*, ecs:RegisterTaskDefinition/UpdateService/RunTask/Describe*, ec2:Describe*, elasticloadbalancing:Describe*, logs:Describe*, iam:GetRole/PassRole/GetPolicy*` |
 | `create_networking=true` | VPC, subnets, route tables, internet gateway, EIP, NAT gateway. | `ec2:CreateVpc/DeleteVpc/CreateSubnet/DeleteSubnet/CreateRouteTable/CreateRoute/CreateInternetGateway/AttachInternetGateway/AllocateAddress/ReleaseAddress/CreateNatGateway/DeleteNatGateway/CreateTags/DeleteTags + ec2:Describe*` |
 | `create_service_security_groups=true` | ALB/ECS security groups and SG rules. | `ec2:CreateSecurityGroup/DeleteSecurityGroup/AuthorizeSecurityGroupIngress/RevokeSecurityGroupIngress/AuthorizeSecurityGroupEgress/RevokeSecurityGroupEgress/CreateTags/DeleteTags + ec2:Describe*` |
 | `create_alb_resources=true` | ALB, listeners/listener rules, target groups, target registrations. | `elasticloadbalancing:Create*/Modify*/Delete*/RegisterTargets/DeregisterTargets/AddTags/RemoveTags + elasticloadbalancing:Describe*` |

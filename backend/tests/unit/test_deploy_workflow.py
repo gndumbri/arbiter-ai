@@ -29,6 +29,17 @@ def test_deploy_workflow_waits_for_all_services_to_stabilize() -> None:
     assert 'aws ecs wait services-stable --cluster "$PROJECT_NAME-cluster" --services "${SERVICES_TO_WAIT[@]}"' in text
 
 
+def test_deploy_workflow_bootstraps_and_smoke_checks_catalog() -> None:
+    text = _read_workflow()
+
+    assert "Resolve ALB endpoint" in text
+    assert "Bootstrap catalog if empty" in text
+    assert "scripts.seed_catalog" in text
+    assert "aws ecs run-task" in text
+    assert "Smoke check catalog is populated" in text
+    assert "/api/v1/catalog/" in text
+
+
 def test_deploy_workflow_supports_state_key_and_mode_overrides() -> None:
     text = _read_workflow()
 
