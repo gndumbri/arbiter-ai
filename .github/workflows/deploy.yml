@@ -409,4 +409,50 @@ jobs:
 
       - name: Wait for services to stabilize
         run: |
-          aws ecs wait services-stable --cluster $PROJECT_NAME-cluster --services $PROJECT_NAME-backend $PROJECT_NAME-frontend $PROJECT_NAME-worker $PROJECT_NAME-beat
+          SERVICES_TO_WAIT=()
+          if [ "${{ needs.build-backend.result }}" = "success" ]; then
+            SERVICES_TO_WAIT+=("$PROJECT_NAME-backend" "$PROJECT_NAME-worker" "$PROJECT_NAME-beat")
+          fi
+          if [ "${{ needs.build-frontend.result }}" = "success" ]; then
+            SERVICES_TO_WAIT+=("$PROJECT_NAME-frontend")
+          fi
+
+          if [ "${#SERVICES_TO_WAIT[@]}" -eq 0 ]; then
+            echo "No updated services to wait for."
+            exit 0
+          fi
+
+          echo "Waiting for ECS services: ${SERVICES_TO_WAIT[*]}"
+          aws ecs describe-services \
+            --cluster "$PROJECT_NAME-cluster" \
+            --services "${SERVICES_TO_WAIT[@]}" \
+            --query "services[].{service:serviceName,desired:desiredCount,running:runningCount,pending:pendingCount,events:events[0].message}" \
+            --output table
+
+          run_wait() {
+            aws ecs wait services-stable --cluster "$PROJECT_NAME-cluster" --services "${SERVICES_TO_WAIT[@]}"
+          }
+
+          set +e
+          run_wait
+          WAIT_EXIT=$?
+          set -e
+
+          if [ "$WAIT_EXIT" -ne 0 ]; then
+            echo "First stabilization wait failed; retrying once after 20s."
+            sleep 20
+            set +e
+            run_wait
+            WAIT_EXIT=$?
+            set -e
+          fi
+
+          if [ "$WAIT_EXIT" -ne 0 ]; then
+            echo "::error::ECS services failed to stabilize."
+            aws ecs describe-services \
+              --cluster "$PROJECT_NAME-cluster" \
+              --services "${SERVICES_TO_WAIT[@]}" \
+              --query "services[].{service:serviceName,status:status,desired:desiredCount,running:runningCount,pending:pendingCount,deployments:deployments[*].{rolloutState:rolloutState,status:status,desired:desiredCount,running:runningCount,pending:pendingCount},events:events[0:5].[createdAt,message]}" \
+              --output json
+            exit "$WAIT_EXIT"
+          fi

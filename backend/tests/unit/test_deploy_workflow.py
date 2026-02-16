@@ -23,7 +23,10 @@ def test_deploy_workflow_rolls_backend_worker_and_beat_together() -> None:
 def test_deploy_workflow_waits_for_all_services_to_stabilize() -> None:
     text = _read_workflow()
 
-    assert "$PROJECT_NAME-backend $PROJECT_NAME-frontend $PROJECT_NAME-worker $PROJECT_NAME-beat" in text
+    assert "SERVICES_TO_WAIT=()" in text
+    assert 'SERVICES_TO_WAIT+=("$PROJECT_NAME-backend" "$PROJECT_NAME-worker" "$PROJECT_NAME-beat")' in text
+    assert 'SERVICES_TO_WAIT+=("$PROJECT_NAME-frontend")' in text
+    assert 'aws ecs wait services-stable --cluster "$PROJECT_NAME-cluster" --services "${SERVICES_TO_WAIT[@]}"' in text
 
 
 def test_deploy_workflow_supports_state_key_and_mode_overrides() -> None:
