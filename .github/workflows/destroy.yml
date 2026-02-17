@@ -1,0 +1,184 @@
+name: Destroy AWS Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_mode:
+        description: "Target environment to destroy"
+        required: true
+        type: choice
+        options:
+          - sandbox
+          - production
+      confirm_environment:
+        description: "Type the environment name to confirm (must match deploy_mode)"
+        required: true
+        type: string
+      force_unlock:
+        description: "Force-unlock Terraform state lock before destroy"
+        required: false
+        default: false
+        type: boolean
+      force_unlock_id:
+        description: "Terraform lock ID to force-unlock (required when force_unlock=true)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  PROJECT_NAME: arbiter-ai
+  DEFAULT_TF_STATE_KEY: prod/terraform.tfstate
+
+jobs:
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - name: Confirmation guard
+        run: |
+          if [ "${{ github.event.inputs.confirm_environment }}" != "${{ github.event.inputs.deploy_mode }}" ]; then
+            echo "::error::Confirmation mismatch: you typed '${{ github.event.inputs.confirm_environment }}' but selected '${{ github.event.inputs.deploy_mode }}'. Aborting."
+            exit 1
+          fi
+        working-directory: .
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.5"
+
+      - name: Resolve deploy context
+        id: context
+        run: |
+          DEPLOY_MODE="${{ github.event.inputs.deploy_mode }}"
+
+          if [ "$DEPLOY_MODE" = "production" ]; then
+            TF_STATE_KEY="${DEFAULT_TF_STATE_KEY}"
+          else
+            TF_STATE_KEY="${DEPLOY_MODE}/terraform.tfstate"
+          fi
+
+          echo "deploy_mode=${DEPLOY_MODE}" >> "$GITHUB_OUTPUT"
+          echo "tf_state_key=${TF_STATE_KEY}" >> "$GITHUB_OUTPUT"
+
+          TF_VARS_FILE="environments/${DEPLOY_MODE}.tfvars"
+          if [ -f "$TF_VARS_FILE" ]; then
+            echo "tf_vars_file=${TF_VARS_FILE}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Missing required tfvars file: ${TF_VARS_FILE}"
+            exit 1
+          fi
+
+      - name: Terraform Init
+        run: terraform init -backend-config="key=${{ steps.context.outputs.tf_state_key }}"
+
+      - name: Validate manual force-unlock inputs
+        if: ${{ github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id == '' }}
+        run: |
+          echo "::error::force_unlock=true requires force_unlock_id to be set."
+          exit 1
+
+      - name: Optional manual force-unlock
+        if: ${{ github.event.inputs.force_unlock == 'true' && github.event.inputs.force_unlock_id != '' }}
+        run: |
+          echo "Manual force-unlock requested for state key: ${{ steps.context.outputs.tf_state_key }}"
+          terraform force-unlock -force "${{ github.event.inputs.force_unlock_id }}"
+
+      - name: Prune unmanaged SES domain state (production)
+        if: ${{ steps.context.outputs.deploy_mode == 'production' }}
+        run: |
+          if grep -Eq '^[[:space:]]*ses_domain[[:space:]]*=[[:space:]]*""[[:space:]]*$' "${{ steps.context.outputs.tf_vars_file }}"; then
+            echo "ses_domain is empty in ${{ steps.context.outputs.tf_vars_file }}; pruning legacy SES domain resources from Terraform state (best effort)."
+            SES_STATE_ADDRS="$(terraform state list 2>/dev/null | grep '^aws_ses_domain_' || true)"
+            if [ -n "$SES_STATE_ADDRS" ]; then
+              while IFS= read -r ADDR; do
+                if [ -n "$ADDR" ]; then
+                  echo "Pruning SES state address: $ADDR"
+                  terraform state rm "$ADDR" || true
+                fi
+              done <<< "$SES_STATE_ADDRS"
+            else
+              echo "No legacy SES state addresses found."
+            fi
+          fi
+
+      - name: Preserve GitHub Actions IAM resources
+        run: |
+          # Remove OIDC provider, deploy role, and role policy from state so they
+          # survive the destroy. The deploy workflow needs these to authenticate.
+          for ADDR in \
+            'aws_iam_openid_connect_provider.github_actions[0]' \
+            'aws_iam_role.github_actions[0]' \
+            'aws_iam_role_policy.github_actions[0]'; do
+            echo "Removing from state: $ADDR"
+            terraform state rm "$ADDR" 2>/dev/null || echo "  (not in state, skipping)"
+          done
+
+      - name: Scale ECS services to 0
+        working-directory: .
+        run: |
+          for SVC in backend frontend worker beat; do
+            SERVICE_NAME="${PROJECT_NAME}-${SVC}"
+            echo "Scaling $SERVICE_NAME to 0..."
+            aws ecs update-service \
+              --cluster "$PROJECT_NAME-cluster" \
+              --service "$SERVICE_NAME" \
+              --desired-count 0 2>/dev/null || echo "  Service $SERVICE_NAME not found, skipping."
+          done
+
+      - name: Wait for ECS tasks to drain
+        working-directory: .
+        run: |
+          echo "Waiting up to 120s for ECS tasks to drain..."
+          DEADLINE=$((SECONDS + 120))
+          while [ "$SECONDS" -lt "$DEADLINE" ]; do
+            RUNNING="$(aws ecs describe-services \
+              --cluster "$PROJECT_NAME-cluster" \
+              --services "${PROJECT_NAME}-backend" "${PROJECT_NAME}-frontend" "${PROJECT_NAME}-worker" "${PROJECT_NAME}-beat" \
+              --query "services[].runningCount" \
+              --output text 2>/dev/null || echo "0")"
+            TOTAL=0
+            for COUNT in $RUNNING; do
+              TOTAL=$((TOTAL + COUNT))
+            done
+            if [ "$TOTAL" -eq 0 ]; then
+              echo "All ECS tasks drained."
+              break
+            fi
+            echo "  $TOTAL tasks still running, waiting 10s..."
+            sleep 10
+          done
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy \
+            -auto-approve \
+            -lock-timeout=10m \
+            -var-file="${{ steps.context.outputs.tf_vars_file }}" \
+            -var="environment=${{ steps.context.outputs.deploy_mode }}" \
+            -var="app_mode=${{ steps.context.outputs.deploy_mode }}" \
+            -var="app_env=${{ steps.context.outputs.deploy_mode }}" \
+            -var="secrets_manager_arn=${{ secrets.SECRETS_MANAGER_ARN }}" \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="backend_image_tag=latest" \
+            -var="frontend_image_tag=latest"
