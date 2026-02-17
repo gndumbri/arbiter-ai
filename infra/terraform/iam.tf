@@ -226,7 +226,6 @@ resource "aws_iam_role_policy" "github_actions" {
           "elasticloadbalancing:ModifyTargetGroup",
           "elasticloadbalancing:DeleteTargetGroup",
           "elasticloadbalancing:CreateLoadBalancer",
-          "elasticloadbalancing:ModifyLoadBalancer",
           "elasticloadbalancing:DeleteLoadBalancer",
           "elasticloadbalancing:RegisterTargets",
           "elasticloadbalancing:DeregisterTargets",

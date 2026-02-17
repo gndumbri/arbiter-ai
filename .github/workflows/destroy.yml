@@ -126,12 +126,18 @@ jobs:
         run: |
           # Remove OIDC provider, deploy role, and role policy from state so they
           # survive the destroy. The deploy workflow needs these to authenticate.
+          # Only attempt removal for resources that actually exist in state.
+          STATE_LIST="$(terraform state list 2>/dev/null || true)"
           for ADDR in \
             'aws_iam_openid_connect_provider.github_actions[0]' \
             'aws_iam_role.github_actions[0]' \
             'aws_iam_role_policy.github_actions[0]'; do
-            echo "Removing from state: $ADDR"
-            terraform state rm "$ADDR" 2>/dev/null || echo "  (not in state, skipping)"
+            if echo "$STATE_LIST" | grep -qF "$ADDR"; then
+              echo "Removing from state: $ADDR"
+              terraform state rm "$ADDR"
+            else
+              echo "Not in state (skipping): $ADDR"
+            fi
           done
 
       - name: Scale ECS services to 0
