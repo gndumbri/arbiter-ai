@@ -11,7 +11,9 @@ data "aws_vpcs" "existing" {
 }
 
 data "aws_subnets" "existing_public" {
-  count = (!var.create_networking && length(var.existing_public_subnet_ids) == 0 && local.vpc_id != "") ? 1 : 0
+  # Use plan-time-safe references (var + discovered) instead of local.vpc_id
+  # which depends on aws_vpc.main[0].id and breaks destroy when VPC is gone.
+  count = (!var.create_networking && length(var.existing_public_subnet_ids) == 0 && (var.existing_vpc_id != "" || local.discovered_vpc_id != "")) ? 1 : 0
 
   filter {
     name   = "vpc-id"
@@ -25,7 +27,9 @@ data "aws_subnets" "existing_public" {
 }
 
 data "aws_subnets" "existing_private" {
-  count = (!var.create_networking && length(var.existing_private_subnet_ids) == 0 && local.vpc_id != "") ? 1 : 0
+  # Use plan-time-safe references (var + discovered) instead of local.vpc_id
+  # which depends on aws_vpc.main[0].id and breaks destroy when VPC is gone.
+  count = (!var.create_networking && length(var.existing_private_subnet_ids) == 0 && (var.existing_vpc_id != "" || local.discovered_vpc_id != "")) ? 1 : 0
 
   filter {
     name   = "vpc-id"
